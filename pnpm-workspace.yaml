@@ -1,0 +1,7 @@
+allowBuilds:
+  "@maxanstey-meridian/tandem": true
+  "@openrouter/sdk": false
+  esbuild: true
+minimumReleaseAgeExclude:
+  - "@maxanstey-meridian/tandem@0.1.4"
+  - "@openrouter/sdk@1.3.17"

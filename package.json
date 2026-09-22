@@ -1,0 +1,51 @@
+{
+  "name": "@waduno-group/atomiser",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Source content to evidenced atoms.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./contracts": {
+      "types": "./dist/src/contracts/atomise.d.ts",
+      "import": "./dist/src/contracts/atomise.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node --input-type=module -e \"import { cp } from 'node:fs/promises'; await cp('python', 'dist/python', { recursive: true, filter: (path) => !path.includes('__pycache__') });\"",
+    "check": "pnpm build && pnpm lint && pnpm format:check && pnpm test",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint .",
+    "atomize": "node --env-file-if-exists=.env --import tsx scripts/atomize.ts",
+    "example-corpus": "node --env-file-if-exists=.env --watch --import tsx examples/corpus/serve.ts",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "test:jev": "node --env-file-if-exists=.env --import tsx --test tests/live/jev.test.ts",
+    "test:jev:context": "node --env-file-if-exists=.env --import tsx --test tests/live/jev-context.test.ts",
+    "setup:gliner": "python3.13 -m venv --clear .venv && .venv/bin/python -m pip install -r python/requirements.txt && .venv/bin/python python/gliner.py --setup .data/gliner2.5-base-v1",
+    "serve": "pnpm build && pnpm start",
+    "start": "node --env-file-if-exists=.env dist/src/server.js"
+  },
+  "dependencies": {
+    "@maxanstey-meridian/tandem": "0.1.4",
+    "@openrouter/sdk": "1.3.17",
+    "fastify": "^5.0.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "oxfmt": "^0.62.0",
+    "oxlint": "^1.77.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.20.0"
+}

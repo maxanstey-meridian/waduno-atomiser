@@ -1,0 +1,5 @@
+gliner2==2.0.0
+torch==2.8.0
+transformers==4.46.3
+huggingface-hub==0.36.2
+peft==0.14.0

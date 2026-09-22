@@ -1,0 +1,11 @@
+version: "3"
+tasks:
+  check:
+    cmds: [pnpm check]
+  serve:
+    cmds: [pnpm build, pnpm start]
+  demo:
+    cmds: [node --env-file-if-exists=.env --import tsx scripts/demo.ts]
+  example-corpus:
+    desc: Run the watched example API in the foreground
+    cmds: [pnpm example-corpus]
