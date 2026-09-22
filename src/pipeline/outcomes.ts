@@ -48,3 +48,14 @@ export const CandidateOutcome = z.discriminatedUnion("outcome", [
   }),
 ]);
 export type CandidateOutcome = z.infer<typeof CandidateOutcome>;
+
+export const acceptedCandidates = (outcomes: readonly CandidateOutcome[]): AcceptedCandidate[] =>
+  outcomes.flatMap((outcome) => {
+    if (outcome.outcome === "accepted") {
+      return [outcome.accepted];
+    }
+    if (outcome.outcome === "split") {
+      return acceptedCandidates(outcome.children);
+    }
+    return [];
+  });

@@ -1,4 +1,3 @@
-import { stage, type Stage } from "@maxanstey-meridian/tandem";
 import {
   ATOMIZATION_VERSION,
   type AtomDraft,
@@ -58,22 +57,18 @@ export const candidateRejections = (
     ];
   });
 
-export const createFinalisationStage = (): Stage<AtomisationState> =>
-  stage<AtomisationState>({
-    id: "finalize",
-    execute: (state) => {
-      if (state.working.phase !== "tagged") {
-        throw new Error("Finalisation requires tagged candidates.");
-      }
-      const atoms = state.working.items.map((candidate) => toAtomDraft(candidate, state.source));
-      return {
-        ...state,
-        output: {
-          atomizationVersion: ATOMIZATION_VERSION,
-          status: atoms.length === 0 ? "no_valid_candidates" : "completed",
-          atoms,
-          candidateRejections: candidateRejections(state.outcomes, state.source),
-        },
-      };
+export const finalise = (state: AtomisationState): AtomisationState => {
+  if (state.working.phase !== "tagged") {
+    throw new Error("Finalisation requires tagged candidates.");
+  }
+  const atoms = state.working.items.map((candidate) => toAtomDraft(candidate, state.source));
+  return {
+    ...state,
+    output: {
+      atomizationVersion: ATOMIZATION_VERSION,
+      status: atoms.length === 0 ? "no_valid_candidates" : "completed",
+      atoms,
+      candidateRejections: candidateRejections(state.outcomes, state.source),
     },
-  });
+  };
+};

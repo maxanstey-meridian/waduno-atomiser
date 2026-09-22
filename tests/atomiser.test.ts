@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { parseApsPropositions } from "../src/agents/parse-propositions.js";
 import { assembleFraming } from "../src/domain/framing.js";
 import {
   acceptsIntegrityProbability,
@@ -8,7 +9,6 @@ import {
   foldIntegrityChecks,
   passesIntegrity,
 } from "../src/domain/integrity.js";
-import { parseApsPropositions } from "../src/pipeline/discovery/parse.js";
 
 test("parseApsPropositions collects bullets and skips the streamed </s> echo", () => {
   const response =

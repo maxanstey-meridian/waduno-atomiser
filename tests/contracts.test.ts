@@ -113,7 +113,15 @@ test("version 9 distinguishes unscored duplicates from scored integrity rejectio
 test("pipeline operations depend on schemas, domain rules and ports, never concrete adapters or reports", () => {
   assertImports(
     "pipeline",
-    ["pipeline", "domain", "application", "contracts"],
+    ["pipeline", "agents", "domain", "application", "contracts"],
+    ["zod", "@maxanstey-meridian/tandem"],
+  );
+});
+
+test("agents depend on their contracts, not adapters or reporting", () => {
+  assertImports(
+    "agents",
+    ["agents", "pipeline", "contracts"],
     ["zod", "@maxanstey-meridian/tandem"],
   );
 });

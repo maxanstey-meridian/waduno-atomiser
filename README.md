@@ -32,7 +32,7 @@ unchanged claims presented as successful transformations. A valid empty APS
 proposition list remains a successful `no_propositions` result.
 
 This is a TypeScript application on Node.js, with Zod contracts and a small
-Fastify host exposing `POST /atomise`. [Tandem] runs the pipeline, manages child
+Fastify host exposing `POST /atomise`. [Tandem] runs the pipeline, manages collection
 concurrency and records execution in SQLite. The LLM defaults to [DeepSeek] through
 OpenRouter but can use a local OpenAI-compatible endpoint. Jev uses OpenRouter;
 [GLiNER] runs locally in a Python subprocess kept warm between requests.

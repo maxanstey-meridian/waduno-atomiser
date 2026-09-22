@@ -3,9 +3,13 @@ import {
   pipeline,
   route,
   run,
-  stage,
   inspectAccepted,
+  inspectPipeline,
   type Stage,
+  type Collection,
+  type ChatClient,
+  type TaskAgent,
+  collection,
 } from "@maxanstey-meridian/tandem";
 import assert from "node:assert/strict";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
@@ -17,26 +21,19 @@ import { stripVTControlCharacters } from "node:util";
 import { z } from "zod";
 import { formatDemoResult, saveDemoResult } from "../scripts/demo-report.js";
 import { measureOpenRouterSpend } from "../scripts/openrouter-spend.js";
+import { createRepairAgent } from "../src/agents/repair.js";
+import { createSplitAgent } from "../src/agents/split.js";
 import type { IntegrityClassifier } from "../src/application/ports/integrity-classifier.js";
 import { CandidateRejection } from "../src/contracts/atomise.js";
 import { SourceEnvelope } from "../src/contracts/source.js";
 import type { IntegrityDecision } from "../src/domain/integrity.js";
 import { createAtomisationPipeline } from "../src/pipeline/atomise-source.js";
-import { createCanonicalisationBatchPipeline } from "../src/pipeline/canonicalisation/batch.js";
-import {
-  createCanonicalisationPipeline,
-  CanonicalisationState,
-} from "../src/pipeline/canonicalisation/claim.js";
-import { createCanonicalisationStage } from "../src/pipeline/canonicalisation/stage.js";
-import { createDeduplicationStage } from "../src/pipeline/deduplicate.js";
-import { candidateRejections, createFinalisationStage } from "../src/pipeline/finalize.js";
-import { createFramingStage } from "../src/pipeline/framing.js";
-import { createIntegrityStage } from "../src/pipeline/integrity.js";
-import { createRepairPipeline } from "../src/pipeline/recovery/repair.js";
-import { createSplitPipeline } from "../src/pipeline/recovery/split.js";
-import { createRecoveryStage, createResolutionStage } from "../src/pipeline/recovery/stage.js";
+import type {
+  AtomisationPipelineDependencies,
+  AtomisationPipelineOptions,
+} from "../src/pipeline/atomise-source.js";
+import { candidateRejections } from "../src/pipeline/finalize.js";
 import { AtomisationState, initialAtomisationState } from "../src/pipeline/state.js";
-import { createTaggingStage } from "../src/pipeline/tagging.js";
 import { chatServer } from "./helpers/chat-server.js";
 
 const source = SourceEnvelope.parse(
@@ -65,16 +62,81 @@ const decision = (overrides: Partial<IntegrityDecision> = {}): IntegrityDecision
   ...overrides,
 });
 
-const oneStage = (node: Stage<AtomisationState>) => {
+const oneStage = (
+  node: Stage<AtomisationState> | Collection<AtomisationState>,
+  persist = false,
+) => {
   const done = output<AtomisationState>({ id: "done", summary: () => "done" });
   return pipeline({
     name: "stage-test",
+    persist,
     state: AtomisationState,
     start: node,
     nodes: [node, done],
     outputs: [done],
     routes: [route({ from: node, to: done, label: "done" })],
   });
+};
+
+const unusedClient: ChatClient = {
+  kind: "openai-compatible",
+  version: 1,
+  endpoint: "http://127.0.0.1:1/v1",
+  model: "unused",
+  wireApi: "completions",
+  verifyModel: false,
+};
+const nodeFromPipeline = (
+  id: string,
+  dependencies: Partial<AtomisationPipelineDependencies> = {},
+  options: AtomisationPipelineOptions = {},
+): Stage<AtomisationState> | Collection<AtomisationState> => {
+  const graph = createAtomisationPipeline(
+    {
+      apsClient: unusedClient,
+      llmClient: unusedClient,
+      classifyIntegrity: async () => assert.fail("Unexpected integrity call"),
+      classifyFraming: async () => assert.fail("Unexpected framing call"),
+      tag: async () => assert.fail("Unexpected tagging call"),
+      ...dependencies,
+    },
+    options,
+  );
+  const node = graph.nodes.find((node) => node.id === id);
+  assert(node?.kind === "stage" || node?.kind === "collection");
+  return node;
+};
+const recoveryNode = (
+  dependencies: Partial<AtomisationPipelineDependencies>,
+  ledgerPath?: string,
+) => nodeFromPipeline("recovery", dependencies, { ledgerPath });
+
+const runTask = async <I, O>(agent: TaskAgent<I, O>, input: I): Promise<O> => {
+  const State = z.object({ value: agent.result.nullable() });
+  const work = collection({
+    id: "work",
+    item: agent.input,
+    result: agent.result,
+    max: 1,
+    agents: [agent],
+    items: (_state: z.infer<typeof State>) => [input],
+    execute: (item, context) => context.run(agent, item),
+    apply: (_state, results) => ({ value: results[0]! }),
+  });
+  const done = output<z.infer<typeof State>>({ id: "done", summary: () => "done" });
+  const result = await run(
+    pipeline({
+      name: "agent-test",
+      state: State,
+      start: work,
+      nodes: [work, done],
+      routes: [route({ from: work, to: done, label: "done" })],
+      outputs: [done],
+    }),
+    { value: null },
+  );
+  assert.notEqual(result.state.value, null);
+  return result.state.value!;
 };
 
 const gate = () => {
@@ -86,7 +148,7 @@ const gate = () => {
 };
 
 test(
-  "one native graph isolates concurrent sources and persists parent and child runs in the ledger",
+  "one native graph isolates concurrent sources and persists all agent visits in each source run",
   { timeout: 60000 },
   async (t) => {
     const directory = mkdtempSync(join(tmpdir(), "atomiser-ledger-"));
@@ -185,10 +247,12 @@ test(
     const database = new DatabaseSync(ledgerPath, { readOnly: true });
     const recordedRuns = database.prepare("SELECT run_id FROM runs").all();
     database.close();
-    assert.equal(recordedRuns.length, 20);
+    assert.equal(recordedRuns.length, 2);
     for (const record of recordedRuns) {
       const runId = String(record.run_id);
-      assert.ok((await inspectAccepted({ ledgerPath, runId })).length > 0);
+      const accepted = await inspectAccepted({ ledgerPath, runId });
+      assert.equal(accepted.filter((value) => value.kind === "StructuredOutputAccepted").length, 9);
+      assert(accepted.some((value) => value.stepId === "canonicalise/canonicalize-one"));
     }
   },
 );
@@ -204,7 +268,7 @@ test("dedupe reports the original discovery index after earlier duplicates were 
       })),
     },
   };
-  const result = await run(oneStage(createDeduplicationStage()), input);
+  const result = await run(oneStage(nodeFromPipeline("dedupe")), input);
   assert.deepEqual(
     result.state.working.items.map((candidate) => candidate.discoveryIndex),
     [0, 2],
@@ -228,60 +292,44 @@ test("dedupe reports the original discovery index after earlier duplicates were 
 });
 
 test(
-  "native max starts the next candidate when any slot frees, without waiting for a striped worker",
+  "native max refills canonicalisation slots and preserves input order",
   { timeout: 10000 },
   async (t) => {
-    const controller = new AbortController();
-    t.after(() => controller.abort());
-    const started = Array.from({ length: 9 }, () => {
-      let resolve = () => {};
-      const promise = new Promise<void>((done) => {
-        resolve = done;
-      });
-      return { promise, resolve };
-    });
+    const started = Array.from({ length: 9 }, gate);
     const finish = new Map<number, () => void>();
-    let active = 0;
-    let peak = 0;
-    let entered = 0;
-    const claim = stage<CanonicalisationState>({
-      id: "controlled-claim",
-      execute: (state, { signal }) =>
-        new Promise<CanonicalisationState>((resolve, reject) => {
-          const index = Number(state.proposition);
-          active += 1;
+    let entered = 0,
+      active = 0,
+      peak = 0;
+    const server = await chatServer(
+      t,
+      (request) =>
+        new Promise<string>((resolve) => {
+          const message = request.messages.find((message) => message.role === "user")!.content;
+          const index = Number(message.split("PROPOSITION\n")[1]);
+          active++;
           peak = Math.max(peak, active);
           finish.set(index, () => {
             finish.delete(index);
-            active -= 1;
-            resolve({ ...state, claim: `claim ${index}` });
+            active--;
+            resolve(JSON.stringify({ claim: `claim ${index}` }));
           });
-          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-          entered += 1;
-          started[entered]!.resolve();
+          started[++entered]!.resolve();
         }),
-    });
-    const done = output<CanonicalisationState>({ id: "done", summary: () => "done" });
-    const child = pipeline({
-      name: "controlled",
-      state: CanonicalisationState,
-      start: claim,
-      nodes: [claim, done],
-      outputs: [done],
-      routes: [route({ from: claim, to: done, label: "done" })],
-    });
-    const batch = createCanonicalisationBatchPipeline(child, 8);
+    );
+    const graph = oneStage(nodeFromPipeline("canonicalise", { llmClient: server.client("claim") }));
     const running = run(
-      batch,
+      graph,
       {
-        source,
-        candidates: Array.from({ length: 8 }, (_, discoveryIndex) => ({
-          discoveryIndex,
-          proposition: String(discoveryIndex),
-        })),
-        canonicalised: [],
+        ...initialAtomisationState(source),
+        working: {
+          phase: "discovered",
+          items: Array.from({ length: 8 }, (_, discoveryIndex) => ({
+            discoveryIndex,
+            proposition: String(discoveryIndex),
+          })),
+        },
       },
-      { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]) },
+      { signal: AbortSignal.timeout(8000) },
     );
     void running.catch(() => {});
     await started[6]!.promise;
@@ -289,7 +337,7 @@ test(
     const [held, released] = [...finish.keys()];
     finish.get(released!)!();
     await started[7]!.promise;
-    assert.ok(finish.has(held!), "a slow candidate must still be pending");
+    assert(finish.has(held!));
     assert.equal(active, 6);
     for (const complete of finish.values()) {
       complete();
@@ -299,33 +347,22 @@ test(
       complete();
     }
     const result = await running;
-    assert.equal(result.succeeded, true);
     assert.equal(peak, 6);
+    assert.equal(result.state.working.phase, "canonicalised");
+    if (result.state.working.phase !== "canonicalised") {
+      assert.fail("Wrong phase");
+    }
     assert.deepEqual(
-      result.state.canonicalised.map((candidate) => candidate.claim),
+      result.state.working.items.map((candidate) => candidate.claim),
       Array.from({ length: 8 }, (_, index) => `claim ${index}`),
     );
   },
 );
 
-test("canonicalisation fails rather than substituting the proposition when its child graph fails", async () => {
-  const unchanged = stage<CanonicalisationState>({ id: "unchanged", execute: (state) => state });
-  const failed = output<CanonicalisationState>({
-    id: "failed",
-    failed: true,
-    summary: () => "no claim",
-  });
-  const child = pipeline({
-    name: "failed-claim",
-    state: CanonicalisationState,
-    start: unchanged,
-    nodes: [unchanged, failed],
-    outputs: [failed],
-    routes: [route({ from: unchanged, to: failed, label: "failed" })],
-  });
-  const graph = oneStage(createCanonicalisationStage(child));
+test("canonicalisation fails rather than substituting a proposition for invalid model output", async (t) => {
+  const server = await chatServer(t, () => JSON.stringify({ claim: "" }));
   await assert.rejects(
-    run(graph, {
+    run(oneStage(nodeFromPipeline("canonicalise", { llmClient: server.client("claim") })), {
       ...initialAtomisationState(source),
       working: {
         phase: "discovered",
@@ -335,47 +372,30 @@ test("canonicalisation fails rather than substituting the proposition when its c
   );
 });
 
-test("the parent's runtime signal cancels an active child run", { timeout: 10000 }, async () => {
-  let notifyStarted = () => {};
-  const started = new Promise<void>((resolve) => {
-    notifyStarted = resolve;
-  });
-  let childSignal: AbortSignal | undefined;
-  const waiting = stage<CanonicalisationState>({
-    id: "wait",
-    execute: async (_state, { signal }) => {
-      childSignal = signal;
-      notifyStarted();
-      return new Promise<CanonicalisationState>((_resolve, reject) => {
-        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-      });
-    },
-  });
-  const childDone = output<CanonicalisationState>({ id: "done", summary: () => "done" });
-  const child = pipeline({
-    name: "waiting-claim",
-    state: CanonicalisationState,
-    start: waiting,
-    nodes: [waiting, childDone],
-    outputs: [childDone],
-    routes: [route({ from: waiting, to: childDone, label: "done" })],
-  });
-  const graph = oneStage(createCanonicalisationStage(child));
-  const controller = new AbortController();
-  const running = run(
-    graph,
-    {
-      ...initialAtomisationState(source),
-      working: { phase: "discovered", items: [{ discoveryIndex: 0, proposition: "Wait." }] },
-    },
-    { signal: controller.signal },
-  );
-  const rejected = assert.rejects(running);
-  await started;
-  controller.abort();
-  await rejected;
-  assert.equal(childSignal?.aborted, true);
-});
+test(
+  "the source signal cancels an active canonicalisation agent",
+  { timeout: 10000 },
+  async (t) => {
+    const started = gate();
+    const server = await chatServer(t, () => {
+      started.resolve();
+      return new Promise<string>(() => {});
+    });
+    const controller = new AbortController();
+    const running = run(
+      oneStage(nodeFromPipeline("canonicalise", { llmClient: server.client("claim") })),
+      {
+        ...initialAtomisationState(source),
+        working: { phase: "discovered", items: [{ discoveryIndex: 0, proposition: "Wait." }] },
+      },
+      { signal: controller.signal },
+    );
+    const rejected = assert.rejects(running, /abort|cancel/i);
+    await started.promise;
+    controller.abort();
+    await rejected;
+  },
+);
 
 test("no-recovery filters candidates and decisions together without adding child runs", async () => {
   const input = {
@@ -393,7 +413,7 @@ test("no-recovery filters candidates and decisions together without adding child
       })),
     },
   };
-  const result = await run(oneStage(createResolutionStage()), input);
+  const result = await run(oneStage(nodeFromPipeline("recovery", {}, { recovery: false })), input);
   assert.deepEqual(
     result.state.working.items.map((candidate) => candidate.proposition),
     ["Accept."],
@@ -416,7 +436,11 @@ test(
           ? "PROPOSITIONS:\n- Child good.\n- Child unresolved.\n- Child compound."
           : "PROPOSITIONS:\n- Child later.";
       }
-      if (request.model === "repair-test") {
+      if (
+        request.messages.some(
+          (message) => message.role === "system" && message.content.startsWith("Revise"),
+        )
+      ) {
         return JSON.stringify({
           claim: message.includes("Repair fails") ? "Still invalid." : "Repaired fact.",
         });
@@ -444,11 +468,10 @@ test(
         return decision();
       });
     const graph = oneStage(
-      createRecoveryStage({
+      recoveryNode({
         classifyIntegrity: classify,
-        repairPipeline: createRepairPipeline(server.client("repair-test")),
-        splitPipeline: createSplitPipeline(server.client("split-test")),
-        claimPipeline: createCanonicalisationPipeline(server.client("claim-test")),
+        apsClient: server.client("split-test"),
+        llmClient: server.client("claim-test"),
       }),
     );
     const input = {
@@ -563,11 +586,10 @@ test(
       assert.fail("An unchanged repair must not be reclassified");
     };
     const graph = oneStage(
-      createRecoveryStage({
+      recoveryNode({
         classifyIntegrity: classify,
-        repairPipeline: createRepairPipeline(server.client("repair-test")),
-        splitPipeline: createSplitPipeline(server.client("split-test")),
-        claimPipeline: createCanonicalisationPipeline(server.client("claim-test")),
+        apsClient: server.client("split-test"),
+        llmClient: server.client("claim-test"),
       }),
     );
     const result = await run(
@@ -627,11 +649,10 @@ test("context-only failures trigger repair and must pass context revalidation", 
       return [decision({ context_complete: complete })];
     };
     const graph = oneStage(
-      createRecoveryStage({
+      recoveryNode({
         classifyIntegrity: classify,
-        repairPipeline: createRepairPipeline(server.client("repair-test")),
-        splitPipeline: createSplitPipeline(server.client("split-test")),
-        claimPipeline: createCanonicalisationPipeline(server.client("claim-test")),
+        apsClient: server.client("split-test"),
+        llmClient: server.client("claim-test"),
       }),
     );
     const result = await run(
@@ -671,11 +692,10 @@ test("a source-supported change of meaning is rejected without repair or split",
     assert.fail("A changed meaning must not reach recovery models"),
   );
   const graph = oneStage(
-    createRecoveryStage({
+    recoveryNode({
       classifyIntegrity: async () => assert.fail("A changed meaning must not be reclassified"),
-      repairPipeline: createRepairPipeline(server.client("repair-test")),
-      splitPipeline: createSplitPipeline(server.client("split-test")),
-      claimPipeline: createCanonicalisationPipeline(server.client("claim-test")),
+      apsClient: server.client("split-test"),
+      llmClient: server.client("claim-test"),
     }),
   );
   const failed = decision({
@@ -709,18 +729,20 @@ test("a source-supported change of meaning is rejected without repair or split",
 test("framing evaluates the emitted claim with the bounded source text", async () => {
   const result = await run(
     oneStage(
-      createFramingStage(async (subject) => {
-        assert.deepEqual(subject, {
-          claim: "The fox jumps over the dog.",
-          sourceTitle: source.title,
-          sourceText: source.text,
-          sourceContext: source.context,
-        });
-        return {
-          world: { layer: "undetermined", fictional_work: null },
-          epistemic: { source_commitment: "asserted", modal_frame: "other" },
-          temporal: { instability: "stable" },
-        };
+      nodeFromPipeline("framing", {
+        classifyFraming: async (subject) => {
+          assert.deepEqual(subject, {
+            claim: "The fox jumps over the dog.",
+            sourceTitle: source.title,
+            sourceText: source.text,
+            sourceContext: source.context,
+          });
+          return {
+            world: { layer: "undetermined", fictional_work: null },
+            epistemic: { source_commitment: "asserted", modal_frame: "other" },
+            temporal: { instability: "stable" },
+          };
+        },
       }),
     ),
     {
@@ -785,20 +807,16 @@ test("APS receives untouched text and canonicalisation and repair receive bounde
   );
   const result = await run(graph, initialAtomisationState(bounded));
   assert.equal(result.succeeded, true, result.summary ?? "failed");
-  const repaired = await run(createRepairPipeline(server.client("repair")), {
+  const repaired = await runTask(createRepairAgent(server.client("repair")), {
     sourceTitle: bounded.title,
     blockText: text,
     context,
     proposition: "He won.",
     claim: "He won.",
-    repaired: null,
   });
-  assert.equal(repaired.succeeded, true);
-  const split = await run(createSplitPipeline(server.client("aps")), {
-    proposition: text,
-    propositions: [],
-  });
-  assert.equal(split.succeeded, true);
+  assert.ok(repaired.claim);
+  const split = await runTask(createSplitAgent(server.client("aps")), text);
+  assert.ok(split.items.length);
 });
 
 test("dedupe preserves signs, decimal points, case and punctuation while removing exact copies", async () => {
@@ -811,7 +829,7 @@ test("dedupe preserves signs, decimal points, case and punctuation while removin
     "It was 02.",
     "US won.",
   ];
-  const result = await run(oneStage(createDeduplicationStage()), {
+  const result = await run(oneStage(nodeFromPipeline("dedupe")), {
     ...initialAtomisationState(source),
     working: {
       phase: "discovered",
@@ -834,7 +852,13 @@ test("dedupe preserves signs, decimal points, case and punctuation while removin
 test("repair, split and split-child canonicalisation failures fail recovery", async (t) => {
   for (const failing of ["repair", "split", "claim"]) {
     const server = await chatServer(t, (request) => {
-      if (request.model === failing) {
+      if (
+        (request.messages.some(
+          (message) => message.role === "system" && message.content.startsWith("Revise"),
+        )
+          ? "repair"
+          : request.model) === failing
+      ) {
         throw new Error("provider unavailable");
       }
       if (request.model === "split") {
@@ -843,12 +867,11 @@ test("repair, split and split-child canonicalisation failures fail recovery", as
       return JSON.stringify({ claim: "A claim." });
     });
     const graph = oneStage(
-      createRecoveryStage({
+      recoveryNode({
         classifyIntegrity: async () =>
           assert.fail("Failed transformations must not reach classification"),
-        repairPipeline: createRepairPipeline(server.client("repair")),
-        splitPipeline: createSplitPipeline(server.client("split")),
-        claimPipeline: createCanonicalisationPipeline(server.client("claim")),
+        apsClient: server.client("split"),
+        llmClient: server.client("claim"),
       }),
     );
     await assert.rejects(
@@ -883,17 +906,20 @@ test("downstream stages reject missing or blank canonical claims before model ca
   const classify: IntegrityClassifier = async () =>
     assert.fail("Invalid candidates must not be classified");
   const stages = [
-    createIntegrityStage(classify),
-    createRecoveryStage({
+    nodeFromPipeline("integrity", { classifyIntegrity: classify }),
+    recoveryNode({
       classifyIntegrity: classify,
-      repairPipeline: createRepairPipeline(server.client("repair")),
-      splitPipeline: createSplitPipeline(server.client("split")),
-      claimPipeline: createCanonicalisationPipeline(server.client("claim")),
+      apsClient: server.client("split"),
+      llmClient: server.client("claim"),
     }),
-    createResolutionStage(),
-    createFramingStage(async () => assert.fail("Invalid candidates must not be framed")),
-    createTaggingStage(async () => assert.fail("Invalid candidates must not be tagged")),
-    createFinalisationStage(),
+    nodeFromPipeline("recovery", {}, { recovery: false }),
+    nodeFromPipeline("framing", {
+      classifyFraming: async () => assert.fail("Invalid candidates must not be framed"),
+    }),
+    nodeFromPipeline("tagging", {
+      tag: async () => assert.fail("Invalid candidates must not be tagged"),
+    }),
+    nodeFromPipeline("finalize"),
   ];
   for (const node of stages) {
     for (const claim of [undefined, "   "]) {
@@ -954,11 +980,10 @@ test(
       return [decision({ mean: 1 - index / 100 })];
     };
     const graph = oneStage(
-      createRecoveryStage({
+      recoveryNode({
         classifyIntegrity: classify,
-        repairPipeline: createRepairPipeline(server.client("repair")),
-        splitPipeline: createSplitPipeline(server.client("split")),
-        claimPipeline: createCanonicalisationPipeline(server.client("claim")),
+        apsClient: server.client("split"),
+        llmClient: server.client("claim"),
       }),
     );
     const running = run(
@@ -1045,15 +1070,15 @@ test(
         return decision({ atomic: !candidate.proposition.endsWith("compound.") });
       });
     const graph = oneStage(
-      createRecoveryStage(
+      recoveryNode(
         {
           classifyIntegrity: classify,
-          repairPipeline: createRepairPipeline(server.client("repair"), true),
-          splitPipeline: createSplitPipeline(server.client("split"), true),
-          claimPipeline: createCanonicalisationPipeline(server.client("claim"), true),
+          apsClient: server.client("split"),
+          llmClient: server.client("claim"),
         },
         ledgerPath,
       ),
+      true,
     );
     const input: AtomisationState = {
       ...initialAtomisationState(source),
@@ -1141,7 +1166,7 @@ test(
     assert.deepEqual(single.state.outcomes[0], input.outcomes[0]);
     const before = server.requests.length;
     const empty = { ...initialAtomisationState(source), working: { phase: "assessed", items: [] } };
-    assert.deepEqual((await run(graph, empty)).state, {
+    assert.deepEqual((await run(graph, empty, { ledgerPath })).state, {
       ...empty,
       working: { phase: "accepted", items: [] },
     });
@@ -1149,9 +1174,9 @@ test(
     const database = new DatabaseSync(ledgerPath, { readOnly: true });
     try {
       const batches = database
-        .prepare("SELECT run_id FROM runs WHERE composition = 'aps-recover-candidates'")
+        .prepare("SELECT run_id FROM runs WHERE composition = 'stage-test'")
         .all();
-      assert.equal(batches.length, 2);
+      assert.equal(batches.length, 3);
       for (const batch of batches) {
         assert.ok((await inspectAccepted({ ledgerPath, runId: String(batch.run_id) })).length > 0);
       }
@@ -1191,11 +1216,10 @@ test(
         return [decision()];
       };
       const graph = oneStage(
-        createRecoveryStage({
+        recoveryNode({
           classifyIntegrity: classify,
-          repairPipeline: createRepairPipeline(server.client("repair")),
-          splitPipeline: createSplitPipeline(server.client("split")),
-          claimPipeline: createCanonicalisationPipeline(server.client("claim")),
+          apsClient: server.client("split"),
+          llmClient: server.client("claim"),
         }),
       );
       const running = run(
@@ -1269,7 +1293,9 @@ test("working phases reject incomplete records and stages reject the wrong phase
   await assert.rejects(
     run(
       oneStage(
-        createIntegrityStage(async () => assert.fail("Wrong phase must not reach classification")),
+        nodeFromPipeline("integrity", {
+          classifyIntegrity: async () => assert.fail("Wrong phase must not reach classification"),
+        }),
       ),
       initialAtomisationState(source),
     ),
@@ -1277,7 +1303,11 @@ test("working phases reject incomplete records and stages reject the wrong phase
   );
   await assert.rejects(
     run(
-      oneStage(createFramingStage(async () => assert.fail("Wrong phase must not reach framing"))),
+      oneStage(
+        nodeFromPipeline("framing", {
+          classifyFraming: async () => assert.fail("Wrong phase must not reach framing"),
+        }),
+      ),
       {
         ...initialAtomisationState(source),
         working: { phase: "assessed", items: [candidate] },
@@ -1290,7 +1320,7 @@ test("working phases reject incomplete records and stages reject the wrong phase
 test("integrity refuses missing and extra classifier decisions", async () => {
   for (const decisions of [[], [decision(), decision()]]) {
     await assert.rejects(
-      run(oneStage(createIntegrityStage(async () => decisions)), {
+      run(oneStage(nodeFromPipeline("integrity", { classifyIntegrity: async () => decisions })), {
         ...initialAtomisationState(source),
         working: {
           phase: "canonicalised",
@@ -1324,7 +1354,7 @@ test("finalisation keeps each survivor's scores, framing and tags when candidate
     integrity: decision({ mean: 0.9 }),
     tags: ["second"],
   };
-  const result = await run(oneStage(createFinalisationStage()), {
+  const result = await run(oneStage(nodeFromPipeline("finalize")), {
     ...initialAtomisationState(source),
     working: { phase: "tagged", items: [second, first] },
     outcomes: [
@@ -1371,11 +1401,10 @@ test("blank split-child claims fail before integrity classification", async (t) 
     request.model === "split" ? "PROPOSITIONS:\n- Child fact." : JSON.stringify({ claim: "   " }),
   );
   const graph = oneStage(
-    createRecoveryStage({
+    recoveryNode({
       classifyIntegrity: async () => assert.fail("Blank child claims must not be classified"),
-      repairPipeline: createRepairPipeline(server.client("repair")),
-      splitPipeline: createSplitPipeline(server.client("split")),
-      claimPipeline: createCanonicalisationPipeline(server.client("claim")),
+      apsClient: server.client("split"),
+      llmClient: server.client("claim"),
     }),
   );
   await assert.rejects(
@@ -1394,4 +1423,35 @@ test("blank split-child claims fail before integrity classification", async (t) 
       },
     }),
   );
+});
+
+test("the source pipeline exposes eight processing nodes and two terminals", () => {
+  const graph = createAtomisationPipeline({
+    apsClient: unusedClient,
+    llmClient: unusedClient,
+    classifyIntegrity: async () => [],
+    classifyFraming: async () => assert.fail("No execution"),
+    tag: async () => [],
+  });
+  const inspection = inspectPipeline(graph);
+  assert.deepEqual(
+    inspection.nodes.map((node) => [node.id, node.kind]),
+    [
+      ["aps-discovery", "agent"],
+      ["dedupe", "stage"],
+      ["canonicalise", "collection"],
+      ["integrity", "stage"],
+      ["recovery", "collection"],
+      ["framing", "stage"],
+      ["tagging", "stage"],
+      ["finalize", "stage"],
+      ["done", "completion"],
+      ["failed", "failure"],
+    ],
+  );
+  assert.deepEqual(
+    inspection.nodes.filter((node) => node.kind === "collection").map((node) => node.max),
+    [6, 6],
+  );
+  assert.deepEqual(inspection.outputs, ["done", "failed"]);
 });

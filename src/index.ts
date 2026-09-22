@@ -15,7 +15,7 @@ export {
   type AtomisationPipelineOptions,
 } from "./pipeline/atomise-source.js";
 export { AtomisationState, initialAtomisationState } from "./pipeline/state.js";
-export { DiscoveryOutput } from "./pipeline/discovery/parse.js";
+export { DiscoveryOutput } from "./agents/parse-propositions.js";
 export type {
   EpistemicFraming,
   Instability,

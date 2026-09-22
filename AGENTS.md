@@ -10,12 +10,12 @@ Domain owns pure decision types, integrity thresholds and recovery eligibility; 
 and consumes the public source/output schemas directly. Contracts never import
 Domain or pipeline internals. Application
 owns narrow classifier ports, with no contracts or Tandem imports. Pipeline owns
-native graphs/stages; infrastructure implements model ports. Bootstrap's bootstrapAtomiser returns an explicit AtomiserRuntime
+one native graph with two collections and inline stages; infrastructure implements model ports. Bootstrap's bootstrapAtomiser returns an explicit AtomiserRuntime
 { pipeline: Pipeline<AtomisationState>, close }. The graph factory lives in pipeline/;
-HTTP accepts the pipeline directly. Graph, stage and agent factories declare native
-Tandem return types; state types are inferred from their owning Zod schemas. Candidate records carry their own
+HTTP accepts the pipeline directly. Agent definitions live in agents/ and declare
+explicit input/output types; state types are inferred from their owning Zod schemas. Candidate records carry their own
 assessment and enrichment under a discriminated working phase. Recovery takes one
-assessed candidate and returns an outcome; the batch owns ordered child identities. HTTP host and CLI invoke native Tandem run directly and close
+assessed candidate and returns an outcome; the recovery collection applies ordered child identities. HTTP host and CLI invoke native Tandem run directly and close
 the GLiNER subprocess when their lifecycle ends.
 
 The published source schema has opaque id/version, title, text, kind, context

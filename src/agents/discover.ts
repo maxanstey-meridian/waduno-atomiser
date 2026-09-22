@@ -1,8 +1,8 @@
 import { agent, type ChatClient, type Agent } from "@maxanstey-meridian/tandem";
-import { ATOMIZATION_VERSION, type AtomizationOutput } from "../../contracts/atomise.js";
-import type { AtomisationState } from "../state.js";
-import type { DiscoveryOutput } from "./parse.js";
-import { parseApsPropositions } from "./parse.js";
+import { ATOMIZATION_VERSION, type AtomizationOutput } from "../contracts/atomise.js";
+import type { AtomisationState } from "../pipeline/state.js";
+import type { DiscoveryOutput } from "./parse-propositions.js";
+import { parseApsPropositions } from "./parse-propositions.js";
 
 export const createDiscoveryAgent = (apsClient: ChatClient): Agent<AtomisationState> =>
   agent<AtomisationState, DiscoveryOutput>({
