@@ -159,41 +159,120 @@ test("integrity requests carry explicit targets and task-specific criteria, incl
   assert.equal(passesIntegrity(results[1]!), false);
 });
 
-test("framing supports undetermined worlds and other modalities without guessing a work from the title", async () => {
-  for (const layer of ["fictional_world", "undetermined"] as const) {
+test("framing batches indexed questions in order and handles empty input", async () => {
+  const source = {
+    title: "An arbitrary heading",
+    text: "The fox would jump if the dog slept.",
+    context: { sectionPath: [], leadIn: null },
+  };
+  const calls: string[][] = [];
+  const transport: typeof fetch = async (input, init) => {
+    const body = z
+      .object({
+        state: z.unknown(),
+        questions: z.record(
+          z.string(),
+          z.object({ instructions: z.object({ claim: z.string() }) }),
+        ),
+      })
+      .parse(await new Request(input, init).json());
+    assert.deepEqual(body.state, { source });
+    const keys = Object.keys(body.questions);
+    calls.push(keys);
+    for (const [key, question] of Object.entries(body.questions)) {
+      assert.equal(question.instructions.claim, `Claim ${Number(key.match(/^a(\d+)_/u)?.[1])}.`);
+    }
+    return Response.json({
+      model: "typesafe/jev-1.13",
+      usage: { input_tokens: 10, output_tokens: 1 },
+      answers: Object.fromEntries(
+        keys.map((key) => [
+          key,
+          {
+            type: "choice",
+            choice: key.endsWith("_world_layer")
+              ? key.startsWith("a26_")
+                ? "fictional_world"
+                : "real_world"
+              : key.endsWith("_source_commitment")
+                ? "asserted"
+                : key.endsWith("_modal_frame")
+                  ? "other"
+                  : "stable",
+          },
+        ]),
+      ),
+    });
+  };
+  const classifier = createJevClassifiers("test-key", transport).classifyFraming;
+  const results = await classifier(
+    source,
+    Array.from({ length: 27 }, (_, i) => `Claim ${i}.`),
+    AbortSignal.timeout(5000),
+  );
+  assert.deepEqual(
+    calls.map((keys) => keys.length),
+    [100, 8],
+  );
+  assert.equal(results.length, 27);
+  assert.equal(results[0]?.world.layer, "real_world");
+  assert.equal(results[26]?.world.layer, "fictional_world");
+  assert.equal(results[26]?.epistemic.modal_frame, "other");
+  assert.deepEqual(await classifier(source, [], AbortSignal.timeout(5000)), []);
+  assert.equal(calls.length, 2);
+});
+
+test("framing rejects missing, extra and malformed indexed answers", async () => {
+  const source = {
+    title: "Gate",
+    text: "Mira opened the gate.",
+    context: { sectionPath: [], leadIn: null },
+  };
+  for (const broken of ["missing", "extra", "malformed"] as const) {
+    let calls = 0;
     const transport: typeof fetch = async (input, init) => {
-      const body = z.object({ state: z.unknown() }).parse(await new Request(input, init).json());
-      assert.deepEqual(body.state, {
-        claim: "The fox would jump if the dog slept.",
-        source: {
-          text: "The fox would jump if the dog slept.",
-          title: "An arbitrary heading",
-          context: { sectionPath: [], leadIn: null },
-        },
-      });
+      calls++;
+      const { questions } = z
+        .object({ questions: z.record(z.string(), z.unknown()) })
+        .parse(await new Request(input, init).json());
+      const answers: Record<string, unknown> = Object.fromEntries(
+        Object.keys(questions).map((key) => [
+          key,
+          {
+            type: "choice",
+            choice: key.endsWith("_world_layer")
+              ? "real_world"
+              : key.endsWith("_source_commitment")
+                ? "asserted"
+                : key.endsWith("_modal_frame")
+                  ? "actual"
+                  : "stable",
+          },
+        ]),
+      );
+      if (broken === "missing") {
+        delete answers.a0_world_layer;
+      }
+      if (broken === "extra") {
+        answers.unexpected = { type: "choice", choice: "actual" };
+      }
+      if (broken === "malformed") {
+        answers.a0_world_layer = { type: "choice", choice: "unknown" };
+      }
       return Response.json({
         model: "typesafe/jev-1.13",
-        usage: { input_tokens: 10, output_tokens: 1 },
-        answers: {
-          world_layer: { type: "choice", choice: layer },
-          source_commitment: { type: "choice", choice: "asserted" },
-          modal_frame: { type: "choice", choice: "other" },
-          temporal_instability: { type: "choice", choice: "stable" },
-        },
+        usage: { input_tokens: 1, output_tokens: 1 },
+        answers,
       });
     };
-    const framing = await createJevClassifiers("test-key", transport).classifyFraming(
-      {
-        claim: "The fox would jump if the dog slept.",
-        sourceTitle: "An arbitrary heading",
-        sourceContext: { sectionPath: [], leadIn: null },
-        sourceText: "The fox would jump if the dog slept.",
-      },
-      AbortSignal.timeout(5000),
+    await assert.rejects(
+      createJevClassifiers("test", transport).classifyFraming(
+        source,
+        ["Mira opened the gate."],
+        AbortSignal.timeout(5000),
+      ),
     );
-    assert.equal(framing.world.layer, layer);
-    assert.equal(framing.world.fictional_work, null);
-    assert.equal(framing.epistemic.modal_frame, "other");
+    assert.equal(calls, 1);
   }
 });
 

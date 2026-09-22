@@ -28,7 +28,8 @@ test("HTTP validates input, extracts every source kind, and distinguishes empty 
     {
       apsClient: server.client("aps"),
       llmClient: server.client("claim"),
-      tag: async (_title, claims) => claims.map(() => ["fox"]),
+      tag: async (_title, claims) =>
+        claims.map(() => [{ text: "Fox", type: "individual", confidence: 0.9 }]),
       classifyIntegrity: async (_source, candidates) =>
         candidates.map(() => ({
           supported: true,
@@ -46,11 +47,12 @@ test("HTTP validates input, extracts every source kind, and distinguishes empty 
           mean: 1,
           reason: "",
         })),
-      classifyFraming: async () => ({
-        world: { layer: "real_world", fictional_work: null },
-        epistemic: { source_commitment: "asserted", modal_frame: "actual" },
-        temporal: { instability: "stable" },
-      }),
+      classifyFraming: async (_source, claims) =>
+        claims.map(() => ({
+          world: { layer: "real_world" },
+          epistemic: { source_commitment: "asserted", modal_frame: "actual" },
+          temporal: { instability: "stable" },
+        })),
     },
     { recovery: false },
   );
@@ -75,7 +77,7 @@ test("HTTP validates input, extracts every source kind, and distinguishes empty 
   discovery = "PROPOSITIONS:\n- The fox jumps.\n- The fox jumps.";
   const duplicates = await app.inject({ method: "POST", url: "/atomise", payload: source });
   assert.equal(duplicates.statusCode, 200, duplicates.body);
-  assert.equal(duplicates.json().atomizationVersion, 9);
+  assert.equal(duplicates.json().atomizationVersion, 10);
   assert.equal(duplicates.json().atoms.length, 1);
   assert.deepEqual(duplicates.json().candidateRejections, [
     {

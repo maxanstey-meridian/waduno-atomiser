@@ -1,7 +1,4 @@
-import type {
-  FramingSubject,
-  FramingResult,
-} from "../../src/application/ports/framing-classifier.js";
+import type { FramingResult } from "../../src/application/ports/framing-classifier.js";
 import type { IntegrityCandidate } from "../../src/application/ports/integrity-classifier.js";
 import type { IntegrityScoreKey } from "../../src/domain/integrity.js";
 
@@ -12,7 +9,10 @@ type IntegrityCanary = IntegrityCandidate & {
   expected: Record<Exclude<IntegrityScoreKey, "context_complete">, boolean>;
 };
 
-type FramingCanary = Omit<FramingSubject, "sourceContext"> & {
+type FramingCanary = {
+  claim: string;
+  sourceTitle: string;
+  sourceText: string;
   name: string;
   why: string;
   expected: {

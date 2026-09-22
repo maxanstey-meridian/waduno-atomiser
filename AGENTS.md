@@ -8,8 +8,8 @@ host. One module, no corpus client, storage or background worker.
 Public wire schemas live in src/contracts and are published through ./contracts.
 Domain owns pure decision types, integrity thresholds and recovery eligibility; pipeline owns internal state schemas
 and consumes the public source/output schemas directly. Contracts never import
-Domain or pipeline internals. Application
-owns narrow classifier ports, with no contracts or Tandem imports. Pipeline owns
+Domain or pipeline internals. Application owns narrow model ports, with no
+contracts or Tandem imports. Pipeline owns
 one native graph with two collections and inline stages; infrastructure implements model ports. Bootstrap's bootstrapAtomiser returns an explicit AtomiserRuntime
 { pipeline: Pipeline<AtomisationState>, close }. The graph factory lives in pipeline/;
 HTTP accepts the pipeline directly. Agent definitions live in agents/ and declare
@@ -20,7 +20,7 @@ the GLiNER subprocess when their lifecycle ends.
 
 The published source schema has opaque id/version, title, text, kind, context
 and evidence passages. No Wikipedia article/revision fields or corpus endpoints.
-The corpus owns source provenance and persistence. Atomisation version is 9;
+The corpus owns source provenance and persistence. Atomisation version is 10;
 ATOMIZATION_VERSION in contracts/atomise.ts is the only owner.
 
 ## Model/runtime constraints
@@ -44,8 +44,8 @@ ATOMIZATION_VERSION in contracts/atomise.ts is the only owner.
   split-child identities there, never from concurrent shared mutation.
 - Native ledger/reporting owns execution observability, not custom collectors.
 - Preserve discovery/integrity/recovery/framing semantics when changing hosting.
-- GLiNER tags surviving canonical claims with source-title context. Types are
-  internal extraction hints; atoms expose normalised, deduplicated `tags: string[]`.
+- GLiNER extracts entities from surviving canonical claims with source-title context.
+  Atoms expose original entity text, type and confidence; no spans or resolution.
 - `pnpm setup:gliner` installs the local Python 3.13 environment and pinned model.
   Runtime loads local weights once per subprocess; stdout is JSON lines and
   diagnostics go to stderr. Tagger failures fail the run, not empty tags.

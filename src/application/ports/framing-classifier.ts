@@ -1,10 +1,9 @@
 import type { EpistemicFraming, TemporalFraming, WorldFraming } from "../../domain/framing.js";
 
-export type FramingSubject = {
-  readonly claim: string;
-  readonly sourceTitle: string;
-  readonly sourceText: string;
-  readonly sourceContext: {
+export type FramingSource = {
+  readonly title: string;
+  readonly text: string;
+  readonly context: {
     readonly sectionPath: readonly string[];
     readonly leadIn: string | null;
   };
@@ -17,5 +16,9 @@ export type FramingResult = {
 };
 
 export interface FramingClassifier {
-  (subject: FramingSubject, signal: AbortSignal): Promise<FramingResult>;
+  (
+    source: FramingSource,
+    claims: readonly string[],
+    signal: AbortSignal,
+  ): Promise<readonly FramingResult[]>;
 }

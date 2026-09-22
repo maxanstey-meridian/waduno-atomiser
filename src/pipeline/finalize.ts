@@ -11,7 +11,7 @@ import type { AtomisationState } from "./state.js";
 const toAtomDraft = (candidate: TaggedCandidate, source: SourceEnvelope): AtomDraft => ({
   proposition: candidate.proposition,
   claim: candidate.claim,
-  tags: candidate.tags,
+  entities: candidate.entities,
   evidence: {
     sourceId: source.id,
     sourceVersion: source.version,

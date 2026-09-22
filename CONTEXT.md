@@ -20,7 +20,7 @@ use their own stage and omit scores; they never received an integrity verdict.
 Generation agents explicitly request reasoning effort `none`.
 Model roles are APS for discovery/splitting, Jev for integrity/framing, and the
 configurable LLM for all canonicalisation and repair. `LLM_*` configuration owns
-that shared generation client; GLiNER provides entity tags separately.
+that shared generation client; GLiNER provides entity text, type and confidence separately.
 Canonicalisation and recovery use native Tandem concurrency, each bounded at six
 per source run. Recovery branches keep their child work serial and their results
 isolated. Branch-local child indices become source-wide identities only during
@@ -30,7 +30,7 @@ Infrastructure and malformed-output failures fail the run. Never present them as
 empty extraction, negative model probabilities or successful fallback claims.
 Framing evaluates the complete emitted assertion. Fictional narrative assertions
 are fixed relative to the narrative, not the reader's moving present; incompatible
-world/temporal classifications fail visibly. Work identification remains deferred.
+world/temporal classifications fail visibly. Work identification remains deferred; framing exposes only the world layer.
 
 Native Tandem owns execution, concurrency and the ledger. GLiNER uses a warm local
 subprocess; its protocol/lifecycle is not an additional background-job system.

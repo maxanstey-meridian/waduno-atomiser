@@ -6,7 +6,7 @@ export type {
 export type { IntegrityCheck } from "./domain/integrity.js";
 export type {
   FramingClassifier,
-  FramingSubject,
+  FramingSource,
   FramingResult,
 } from "./application/ports/framing-classifier.js";
 export {
@@ -38,6 +38,7 @@ export { CandidateOutcome, CandidateResolution, RepairAttempt } from "./pipeline
 export {
   ATOMIZATION_VERSION,
   AtomDraft,
+  AtomEntity,
   type AtomEvidence,
   AtomFraming,
   AtomizationOutput,

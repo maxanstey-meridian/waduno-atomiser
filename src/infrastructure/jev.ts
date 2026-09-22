@@ -2,7 +2,7 @@ import { OpenRouter } from "@openrouter/sdk";
 import { HTTPClient } from "@openrouter/sdk/lib/http.js";
 import type { DecisionsNoulQuestion } from "@openrouter/sdk/models";
 import { z } from "zod";
-import type { FramingClassifier, FramingSubject } from "../application/ports/framing-classifier.js";
+import type { FramingClassifier, FramingResult } from "../application/ports/framing-classifier.js";
 import type { IntegrityClassifier } from "../application/ports/integrity-classifier.js";
 import {
   type WorldLayer,
@@ -24,6 +24,7 @@ import {
 } from "./jev-prompts.js";
 
 const INTEGRITY_BATCH_SIZE = 100;
+const FRAMING_BATCH_SIZE = 25;
 const IntegrityAnswer = z.object({ type: z.literal("noul"), noul: IntegrityProbability });
 const ChoiceAnswer = z.object({ type: z.literal("choice"), choice: z.string() });
 
@@ -53,39 +54,58 @@ const FramingAnswers = z.object({
   temporal_instability: z.enum(["stable", "mutable"]) satisfies z.ZodType<Instability>,
 });
 
-const framingRequest = (subject: FramingSubject) => ({
-  state: {
-    claim: subject.claim,
-    source: {
-      title: subject.sourceTitle,
-      text: subject.sourceText,
-      context: subject.sourceContext,
-    },
-  },
-  questions: framingQuestions,
-});
-
 const framingClassifier =
   (client: OpenRouter): FramingClassifier =>
-  async (subject, signal) => {
-    const { answers } = await client.alpha.decisions.create(
-      { decisionsRequest: { model: "typesafe/jev-1.13", ...framingRequest(subject) } },
-      { signal },
-    );
-    const labels = FramingAnswers.parse({
-      world_layer: ChoiceAnswer.parse(answers.world_layer).choice,
-      source_commitment: ChoiceAnswer.parse(answers.source_commitment).choice,
-      modal_frame: ChoiceAnswer.parse(answers.modal_frame).choice,
-      temporal_instability: ChoiceAnswer.parse(answers.temporal_instability).choice,
-    });
-    return {
-      world: {
-        layer: labels.world_layer,
-        fictional_work: null,
-      },
-      epistemic: { source_commitment: labels.source_commitment, modal_frame: labels.modal_frame },
-      temporal: { instability: labels.temporal_instability },
-    };
+  async (source, claims, signal) => {
+    signal.throwIfAborted();
+    const results: FramingResult[] = [];
+    for (let start = 0; start < claims.length; start += FRAMING_BATCH_SIZE) {
+      signal.throwIfAborted();
+      const batch = claims.slice(start, start + FRAMING_BATCH_SIZE);
+      const questions = Object.fromEntries(
+        batch.flatMap((claim, position) =>
+          Object.entries(framingQuestions).map(([key, question]) => [
+            `a${start + position}_${key}`,
+            { ...question, instructions: { ...question.instructions, claim } },
+          ]),
+        ),
+      );
+      const { answers } = await client.alpha.decisions.create(
+        {
+          decisionsRequest: {
+            model: "typesafe/jev-1.13",
+            state: { source: { title: source.title, text: source.text, context: source.context } },
+            questions,
+          },
+        },
+        { signal },
+      );
+      if (
+        Object.keys(answers).length !== Object.keys(questions).length ||
+        Object.keys(questions).some((key) => !Object.hasOwn(answers, key))
+      ) {
+        throw new Error("Framing classification returned incorrect answer indices.");
+      }
+      for (let position = 0; position < batch.length; position += 1) {
+        const index = start + position;
+        const labels = FramingAnswers.parse({
+          world_layer: ChoiceAnswer.parse(answers[`a${index}_world_layer`]).choice,
+          source_commitment: ChoiceAnswer.parse(answers[`a${index}_source_commitment`]).choice,
+          modal_frame: ChoiceAnswer.parse(answers[`a${index}_modal_frame`]).choice,
+          temporal_instability: ChoiceAnswer.parse(answers[`a${index}_temporal_instability`])
+            .choice,
+        });
+        results.push({
+          world: { layer: labels.world_layer },
+          epistemic: {
+            source_commitment: labels.source_commitment,
+            modal_frame: labels.modal_frame,
+          },
+          temporal: { instability: labels.temporal_instability },
+        });
+      }
+    }
+    return results;
   };
 
 // Each bounded batch shares one source context. Index the provider questions so

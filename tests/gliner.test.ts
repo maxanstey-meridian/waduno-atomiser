@@ -18,16 +18,25 @@ test("tagger reuses one process and serializes concurrent requests without mixin
       tagger.tag("second title", ["three"], AbortSignal.timeout(5000)),
     ]);
     assert.deepEqual(
-      first.map((tags) => tags.slice(0, 2)),
+      first.map((entities) => entities.slice(0, 2)),
       [
-        ["first title", "one"],
-        ["first title", "two"],
+        [
+          { text: "first title", type: "topic", confidence: 0.9 },
+          { text: "one", type: "individual", confidence: 0.8 },
+        ],
+        [
+          { text: "first title", type: "topic", confidence: 0.9 },
+          { text: "two", type: "individual", confidence: 0.8 },
+        ],
       ],
     );
-    assert.deepEqual(second[0]?.slice(0, 2), ["second title", "three"]);
-    assert.equal(first[0]?.[2], second[0]?.[2]);
-    assert.equal(first[0]?.[3], "1");
-    assert.equal(second[0]?.[3], "2");
+    assert.deepEqual(second[0]?.slice(0, 2), [
+      { text: "second title", type: "topic", confidence: 0.9 },
+      { text: "three", type: "individual", confidence: 0.8 },
+    ]);
+    assert.equal(first[0]?.[2]?.text, second[0]?.[2]?.text);
+    assert.equal(first[0]?.[3]?.text, "1");
+    assert.equal(second[0]?.[3]?.text, "2");
   } finally {
     tagger.close();
   }
@@ -37,10 +46,13 @@ test("tagger reuses one process and serializes concurrent requests without mixin
 test("tagger rejects malformed responses, wrong counts and process crashes then recovers", async () => {
   const tagger = create();
   try {
-    for (const title of ["malformed", "wrong count", "crash"]) {
+    for (const title of ["malformed", "wrong count", "bad entity", "crash"]) {
       await assert.rejects(tagger.tag(title, ["one"], AbortSignal.timeout(5000)), /GLiNER/u);
-      const [tags] = await tagger.tag("healthy", ["one"], AbortSignal.timeout(5000));
-      assert.deepEqual(tags?.slice(0, 2), ["healthy", "one"]);
+      const [entities] = await tagger.tag("healthy", ["one"], AbortSignal.timeout(5000));
+      assert.deepEqual(entities?.slice(0, 2), [
+        { text: "healthy", type: "topic", confidence: 0.9 },
+        { text: "one", type: "individual", confidence: 0.8 },
+      ]);
     }
   } finally {
     tagger.close();
@@ -51,8 +63,11 @@ test("cancellation kills active inference without corrupting the next request", 
   const tagger = create();
   try {
     await assert.rejects(tagger.tag("slow", ["one"], AbortSignal.timeout(100)));
-    const [tags] = await tagger.tag("healthy", ["two"], AbortSignal.timeout(5000));
-    assert.deepEqual(tags?.slice(0, 2), ["healthy", "two"]);
+    const [entities] = await tagger.tag("healthy", ["two"], AbortSignal.timeout(5000));
+    assert.deepEqual(entities?.slice(0, 2), [
+      { text: "healthy", type: "topic", confidence: 0.9 },
+      { text: "two", type: "individual", confidence: 0.8 },
+    ]);
   } finally {
     tagger.close();
   }

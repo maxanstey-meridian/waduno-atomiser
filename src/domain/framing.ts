@@ -1,6 +1,5 @@
 export type WorldFraming = {
   layer: "real_world" | "fictional_world" | "undetermined";
-  fictional_work: string | null;
 };
 export type WorldLayer = WorldFraming["layer"];
 export type EpistemicFraming = {

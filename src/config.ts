@@ -41,7 +41,7 @@ const EnvironmentConfig = z.object({
   APS_REQUEST_TIMEOUT_MILLISECONDS: positiveInteger(120_000),
   APS_IDLE_TIMEOUT_MILLISECONDS: positiveInteger(30_000),
   LLM_BASE_URL: modelBaseUrl.default("https://openrouter.ai/api/v1"),
-  LLM_MODEL: z.string().trim().min(1).default("deepseek/deepseek-v4.1-flash"),
+  LLM_MODEL: z.string().trim().min(1).default("openai/gpt-6-luna"),
   LLM_API_KEY_ENVIRONMENT_VARIABLE: z.string().trim().min(1).default("OPENROUTER_API_KEY"),
   LLM_REQUEST_TIMEOUT_MILLISECONDS: positiveInteger(120_000),
 });

@@ -116,7 +116,9 @@ export const formatDemoResult = (state: AtomisationState, width = 100, color = f
   );
   for (const [index, atom] of atoms.entries()) {
     lines.push(paragraph(`${index + 1}. ${atom.claim}`, "  ", width));
-    lines.push(paint("dim", paragraph(`tags: ${JSON.stringify(atom.tags)}`, "     ", width)));
+    lines.push(
+      paint("dim", paragraph(`entities: ${JSON.stringify(atom.entities)}`, "     ", width)),
+    );
   }
   return lines.join("\n");
 };

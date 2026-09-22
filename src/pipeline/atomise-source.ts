@@ -186,22 +186,22 @@ export const createAtomisationPipeline = (
       if (state.working.phase !== "accepted") {
         throw new Error("Framing requires accepted candidates.");
       }
-      const items: FramedCandidate[] = [];
-      for (const candidate of state.working.items) {
-        const result = await classifyFraming(
-          {
-            claim: candidate.claim,
-            sourceTitle: state.source.title,
-            sourceText: state.source.text,
-            sourceContext: state.source.context,
-          },
-          signal,
-        );
-        items.push({
+      const candidates = state.working.items;
+      const results = await classifyFraming(
+        state.source,
+        candidates.map((candidate) => candidate.claim),
+        signal,
+      );
+      if (results.length !== candidates.length) {
+        throw new Error("Framing classification produced an incorrect number of results.");
+      }
+      const items: FramedCandidate[] = candidates.map((candidate, index) => {
+        const result = results[index]!;
+        return {
           ...candidate,
           framing: assembleFraming(result.world, result.epistemic, result.temporal),
-        });
-      }
+        };
+      });
       return { ...state, working: { phase: "framed", items } };
     },
   });
@@ -213,7 +213,7 @@ export const createAtomisationPipeline = (
         throw new Error("Tagging requires framed candidates.");
       }
       const candidates = state.working.items;
-      const tags =
+      const entities =
         candidates.length === 0
           ? []
           : await tag(
@@ -221,14 +221,17 @@ export const createAtomisationPipeline = (
               candidates.map((candidate) => candidate.claim),
               signal,
             );
-      if (tags.length !== candidates.length) {
+      if (entities.length !== candidates.length) {
         throw new Error("Tagger returned an incorrect number of results");
       }
       return {
         ...state,
         working: {
           phase: "tagged",
-          items: candidates.map((candidate, index) => ({ ...candidate, tags: tags[index]! })),
+          items: candidates.map((candidate, index) => ({
+            ...candidate,
+            entities: entities[index]!,
+          })),
         },
       };
     },

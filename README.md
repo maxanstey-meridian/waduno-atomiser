@@ -23,8 +23,9 @@ gate is `0.6` for each check; standalone sees only the claim.
 Eligible failures get a recovery attempt: the LLM repairs incomplete claims;
 Gemma-APS splits compound propositions. The results go through the checks again.
 Remaining failures are rejected. Jev then classifies the accepted claims' world,
-epistemic and temporal context, and Fastino's [GLiNER 2.5] adds tags. Each atom carries its
-claim, source evidence, scores, framing and tags.
+epistemic and temporal context, and Fastino's [GLiNER 2.5] extracts entities. Each atom carries its
+claim, source evidence, scores, framing and entities such as
+`{ "text": "Neil Armstrong", "type": "individual", "confidence": 0.9988 }`.
 
 Malformed model output, missing classifier answers and failed child operations
 fail the run. They are not converted into empty extraction, zero scores or
@@ -33,7 +34,7 @@ proposition list remains a successful `no_propositions` result.
 
 This is a TypeScript application on Node.js, with Zod contracts and a small
 Fastify host exposing `POST /atomise`. [Tandem] runs the pipeline, manages collection
-concurrency and records execution in SQLite. The LLM defaults to [DeepSeek] through
+concurrency and records execution in SQLite. The LLM defaults to [GPT-6 Luna] through
 OpenRouter but can use a local OpenAI-compatible endpoint. Jev uses OpenRouter;
 [GLiNER] runs locally in a Python subprocess kept warm between requests.
 
@@ -58,7 +59,7 @@ Configure `.env` using the values in `.env.example`:
 | `APS_API_KEY`                      | Optional                       | Leave blank for an unauthenticated APS endpoint.                        |
 | `OPENROUTER_API_KEY`               | Required                       | OpenRouter API key for Jev, also used by the default LLM configuration. |
 | `LLM_BASE_URL`                     | `https://openrouter.ai/api/v1` | OpenAI-compatible endpoint for canonicalisation and repair.             |
-| `LLM_MODEL`                        | `deepseek/deepseek-v4.1-flash` | Shared LLM for canonicalisation and repair, including split children.   |
+| `LLM_MODEL`                        | `openai/gpt-6-luna`            | Shared LLM for canonicalisation and repair, including split children.   |
 | `LLM_API_KEY_ENVIRONMENT_VARIABLE` | `OPENROUTER_API_KEY`           | Name of the environment variable containing the LLM endpoint's key.     |
 | `LLM_REQUEST_TIMEOUT_MILLISECONDS` | `120000`                       | LLM request timeout in milliseconds.                                    |
 | `ATOMIZER_RECOVERY`                | `true`                         | Enable repair and splitting; the demo always enables recovery.          |
@@ -78,8 +79,7 @@ task demo
 Abbreviated demo output — only the examples producing atoms 1 and 7 are shown.
 Their original proposition numbers are 1 and 8. The first two sources and the
 intervening results are omitted; counts and costs are from the full run. This
-transcript predates the restructuring; the current formatter shows tags in the
-OUTPUT section rather than repeating them beneath each decision.
+transcript predates the entity output revision; entity results are omitted below.
 
 ```text
 max@Maxs-Mac-Studio waduno-atomiser % task demo
@@ -107,7 +107,6 @@ Jev checks must all pass; probabilities are not an overall truth score.
     context complete 0.84 ✓ · atomic 0.89 ✓
     Produced [1]: The Environmental Protection Agency fines Mr. Burns $3 million for
     dumping nuclear waste in a Springfield park.
-    tags: ["mr. burns","environmental protection agency","springfield park"]
 
 [... propositions 2–7 and their recovery results omitted ...]
 
@@ -119,15 +118,12 @@ Jev checks must all pass; probabilities are not an overall truth score.
     context complete 0.76 ✓ · atomic 0.91 ✓
     Produced [7]: Lyle Lanley's song-and-dance routine convinces the townspeople
     to build a monorail.
-    tags: ["lyle lanley","townspeople","monorail"]
 
 OUTPUT · 7 atoms · completed
   1. The Environmental Protection Agency fines Mr. Burns $3 million for dumping
      nuclear waste in a Springfield park.
-     tags: ["mr. burns","environmental protection agency","springfield park"]
   [... atoms 2–6 omitted ...]
   7. Lyle Lanley's song-and-dance routine convinces the townspeople to build a monorail.
-     tags: ["lyle lanley","townspeople","monorail"]
 
 Atoms saved to: /Users/max/Sites/waduno-group/waduno-atomiser/.data/demo/2026-09-22T15-31-44.195Z-gqeyQ5/atoms.json
 Report saved to: /Users/max/Sites/waduno-group/waduno-atomiser/.data/demo/2026-09-22T15-31-44.195Z-gqeyQ5/report.json
@@ -155,7 +151,7 @@ The Wikipedia excerpts retain their CC BY-SA 4.0 licence; see
 [example attribution](examples/corpus/SOURCES.md).
 
 [Gemma-APS]: https://huggingface.co/google/gemma-7b-aps-it
-[DeepSeek]: https://github.com/deepseek-ai
+[GPT-6 Luna]: https://openrouter.ai/openai/gpt-6-luna
 [Jev]: https://openrouter.ai/typesafe/jev-1.13
 [GLiNER]: https://github.com/fastino-ai/GLiNER2
 [GLiNER 2.5]: https://huggingface.co/fastino/gliner2.5-base-v1

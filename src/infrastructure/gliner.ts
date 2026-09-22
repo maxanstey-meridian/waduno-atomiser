@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import { z } from "zod";
 import type { AtomTagger } from "../application/ports/atom-tagger.js";
+import { AtomEntity, type AtomEntity as AtomEntityType } from "../contracts/atomise.js";
 
 export type GlinerTagger = {
   readonly tag: AtomTagger;
@@ -64,7 +65,7 @@ export const createGlinerTagger = (
       }
       const executionSignal = AbortSignal.any([signal, AbortSignal.timeout(120_000)]);
       const process = start();
-      return await new Promise<string[][]>((resolve, reject) => {
+      return await new Promise<AtomEntityType[][]>((resolve, reject) => {
         const abort = () =>
           stop(new Error("GLiNER request aborted", { cause: executionSignal.reason }));
         const cleanup = () => {
@@ -78,12 +79,12 @@ export const createGlinerTagger = (
         };
         acceptLine = (line) => {
           try {
-            const tags = z
-              .array(z.array(z.string().trim().min(1)))
+            const entities = z
+              .array(z.array(AtomEntity))
               .length(claims.length)
               .parse(JSON.parse(line));
             cleanup();
-            resolve(tags);
+            resolve(entities);
           } catch (error) {
             stop(new Error("Invalid GLiNER response", { cause: error }));
           }

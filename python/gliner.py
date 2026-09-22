@@ -45,16 +45,13 @@ def serve(path):
                     TAG_TYPES,
                     threshold=0.5,
                     include_confidence=True,
-                    include_spans=True,
                 )
-                tags = {}
-                for values in raw["entities"].values():
-                    for value in values:
-                        text = value["text"] if isinstance(value, dict) else value
-                        tag = " ".join(text.split()).casefold()
-                        if tag:
-                            tags[tag] = None
-                results.append(list(tags))
+                entities = [
+                    {"text": value["text"], "type": entity_type, "confidence": value["confidence"]}
+                    for entity_type, values in raw["entities"].items()
+                    for value in values
+                ]
+                results.append(entities)
         print(json.dumps(results, ensure_ascii=False), flush=True)
 
 

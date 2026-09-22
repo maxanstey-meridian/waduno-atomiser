@@ -79,24 +79,15 @@ test("foldIntegrityChecks derives complete decisions and rejects missing checks"
 
 test("framing preserves labels and enforces fictional-world stability", () => {
   const framing = assembleFraming(
-    { layer: "fictional_world", fictional_work: '["Platoon"]' },
+    { layer: "fictional_world" },
     { source_commitment: "asserted", modal_frame: "actual" },
     { instability: "stable" },
   );
-  assert.equal(framing.world.fictional_work, '["Platoon"]');
-
-  assert.equal(
-    assembleFraming(
-      { layer: "fictional_world", fictional_work: null },
-      { source_commitment: "asserted", modal_frame: "actual" },
-      { instability: "stable" },
-    ).world.fictional_work,
-    null,
-  );
+  assert.equal(framing.world.layer, "fictional_world");
 
   assert.throws(() =>
     assembleFraming(
-      { layer: "fictional_world", fictional_work: "Platoon" },
+      { layer: "fictional_world" },
       { source_commitment: "asserted", modal_frame: "actual" },
       { instability: "mutable" },
     ),

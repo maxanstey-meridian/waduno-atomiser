@@ -14,10 +14,18 @@ for line in sys.stdin:
     if request["title"] == "wrong count":
         print("[]", flush=True)
         continue
+    if request["title"] == "bad entity":
+        print(json.dumps([[{"text": "Bad", "type": "topic", "confidence": 2}]]), flush=True)
+        continue
     if request["title"] == "slow":
         time.sleep(1)
     count += 1
     print(json.dumps([
-        [request["title"], claim, str(os.getpid()), str(count)]
+        [
+            {"text": request["title"], "type": "topic", "confidence": 0.9},
+            {"text": claim, "type": "individual", "confidence": 0.8},
+            {"text": str(os.getpid()), "type": "worker", "confidence": 0.7},
+            {"text": str(count), "type": "count", "confidence": 0.6},
+        ]
         for claim in request["claims"]
     ]), flush=True)

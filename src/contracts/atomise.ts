@@ -1,10 +1,9 @@
 import { z } from "zod";
 import { SourcePassage } from "./source.js";
 export { SourceEnvelope, SourcePassage } from "./source.js";
-export const ATOMIZATION_VERSION = 9;
+export const ATOMIZATION_VERSION = 10;
 const WorldFraming = z.strictObject({
   layer: z.enum(["real_world", "fictional_world", "undetermined"]),
-  fictional_work: z.string().min(1).max(100).nullable(),
 });
 export type WorldFraming = z.infer<typeof WorldFraming>;
 export type WorldLayer = WorldFraming["layer"];
@@ -76,10 +75,17 @@ export const AtomEvidence = z.strictObject({
 });
 export type AtomEvidence = z.infer<typeof AtomEvidence>;
 
+export const AtomEntity = z.strictObject({
+  text: z.string().min(1),
+  type: z.string().min(1),
+  confidence: Probability,
+});
+export type AtomEntity = z.infer<typeof AtomEntity>;
+
 const AtomFields = z.strictObject({
   proposition: z.string().min(1),
   claim: z.string().min(1),
-  tags: z.array(z.string().trim().min(1)),
+  entities: z.array(AtomEntity),
   evidence: AtomEvidence,
   atomizationVersion: z.number().int().positive(),
 });

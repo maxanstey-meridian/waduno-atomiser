@@ -96,15 +96,16 @@ test("live Jev recognises the labelled semantic canaries", { timeout: 300_000 },
   }
 
   for (const fixture of framingCanaries) {
-    const result = await classifyFraming(
+    const [result] = await classifyFraming(
       {
-        claim: fixture.claim,
-        sourceTitle: fixture.sourceTitle,
-        sourceText: fixture.sourceText,
-        sourceContext: { sectionPath: [], leadIn: null },
+        title: fixture.sourceTitle,
+        text: fixture.sourceText,
+        context: { sectionPath: [], leadIn: null },
       },
+      [fixture.claim],
       signal,
     );
+    assert.ok(result);
     for (const group of ["world", "epistemic", "temporal"] as const) {
       const actual: Record<string, unknown> = result[group];
       for (const [key, expected] of Object.entries(fixture.expected[group] ?? {})) {

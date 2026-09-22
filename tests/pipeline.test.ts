@@ -168,15 +168,19 @@ test(
     const graph = createAtomisationPipeline(
       {
         tag: async (title, claims) =>
-          claims.map((claim) => [title.toLowerCase(), claim.toLowerCase()]),
+          claims.map((claim) => [
+            { text: title, type: "topic", confidence: 0.9 },
+            { text: claim, type: "topic", confidence: 0.8 },
+          ]),
         apsClient: server.client("aps-test"),
         llmClient: server.client("claim-test"),
         classifyIntegrity: async (_source, candidates) => candidates.map(() => decision()),
-        classifyFraming: async () => ({
-          world: { layer: "real_world", fictional_work: null },
-          epistemic: { source_commitment: "asserted", modal_frame: "actual" },
-          temporal: { instability: "stable" },
-        }),
+        classifyFraming: async (_source, claims) =>
+          claims.map(() => ({
+            world: { layer: "real_world" },
+            epistemic: { source_commitment: "asserted", modal_frame: "actual" },
+            temporal: { instability: "stable" },
+          })),
       },
       { recovery: false, ledgerPath },
     );
@@ -197,10 +201,10 @@ test(
         assert.equal(result.succeeded, true, result.summary ?? "failed");
         assert.equal(result.state.output?.atoms.length, 8);
         assert.deepEqual(
-          result.state.output?.atoms.map((atom) => atom.tags),
+          result.state.output?.atoms.map((atom) => atom.entities),
           Array.from({ length: 8 }, (_, index) => [
-            title.toLowerCase(),
-            `${title.toLowerCase()}: fact ${index}.`,
+            { text: title, type: "topic", confidence: 0.9 },
+            { text: `${title}: Fact ${index}.`, type: "topic", confidence: 0.8 },
           ]),
         );
         assert.deepEqual(
@@ -240,7 +244,9 @@ test(
         assert.equal(stripVTControlCharacters(plain), plain);
       }
       assert.ok(
-        formatDemoResult(state).includes(`tags: ${JSON.stringify(state.output!.atoms[0]!.tags)}`),
+        formatDemoResult(state, 1000).includes(
+          `entities: ${JSON.stringify(state.output!.atoms[0]!.entities)}`,
+        ),
       );
     }
     assert.equal(server.requests.length, 18);
@@ -730,18 +736,16 @@ test("framing evaluates the emitted claim with the bounded source text", async (
   const result = await run(
     oneStage(
       nodeFromPipeline("framing", {
-        classifyFraming: async (subject) => {
-          assert.deepEqual(subject, {
-            claim: "The fox jumps over the dog.",
-            sourceTitle: source.title,
-            sourceText: source.text,
-            sourceContext: source.context,
-          });
-          return {
-            world: { layer: "undetermined", fictional_work: null },
-            epistemic: { source_commitment: "asserted", modal_frame: "other" },
-            temporal: { instability: "stable" },
-          };
+        classifyFraming: async (framingSource, claims) => {
+          assert.deepEqual(framingSource, source);
+          assert.deepEqual(claims, ["The fox jumps over the dog."]);
+          return [
+            {
+              world: { layer: "undetermined" },
+              epistemic: { source_commitment: "asserted", modal_frame: "other" },
+              temporal: { instability: "stable" },
+            },
+          ];
         },
       }),
     ),
@@ -764,6 +768,26 @@ test("framing evaluates the emitted claim with the bounded source text", async (
   assert.ok(result.state.working.phase === "framed");
   assert.equal(result.state.working.items[0]?.framing.world.layer, "undetermined");
   assert.equal(result.state.working.items[0]?.framing.epistemic.modal_frame, "other");
+});
+
+test("framing rejects a mismatched classifier result count", async () => {
+  await assert.rejects(
+    run(oneStage(nodeFromPipeline("framing", { classifyFraming: async () => [] })), {
+      ...initialAtomisationState(source),
+      working: {
+        phase: "accepted",
+        items: [
+          {
+            discoveryIndex: 0,
+            proposition: "The fox jumps.",
+            claim: "The fox jumps.",
+            integrity: decision(),
+          },
+        ],
+      },
+    }),
+    /incorrect number of results/u,
+  );
 });
 
 test("APS receives untouched text and canonicalisation and repair receive bounded context", async (t) => {
@@ -793,13 +817,16 @@ test("APS receives untouched text and canonicalisation and repair receive bounde
       apsClient: server.client("aps"),
       llmClient: server.client("claim"),
       classifyIntegrity: async () => [decision()],
-      classifyFraming: async (subject) => {
-        assert.deepEqual(subject.sourceContext, context);
-        return {
-          world: { layer: "real_world", fictional_work: null },
-          epistemic: { source_commitment: "asserted", modal_frame: "actual" },
-          temporal: { instability: "stable" },
-        };
+      classifyFraming: async (framingSource, claims) => {
+        assert.deepEqual(framingSource.context, context);
+        assert.deepEqual(claims, ["Ayrton Senna won by 0.2 seconds."]);
+        return [
+          {
+            world: { layer: "real_world" },
+            epistemic: { source_commitment: "asserted", modal_frame: "actual" },
+            temporal: { instability: "stable" },
+          },
+        ];
       },
       tag: async () => [[]],
     },
@@ -1332,7 +1359,7 @@ test("integrity refuses missing and extra classifier decisions", async () => {
   }
 });
 
-test("finalisation keeps each survivor's scores, framing and tags when candidates are reordered", async () => {
+test("finalisation keeps each survivor's scores, framing and entities when candidates are reordered", async () => {
   const first = {
     discoveryIndex: 0,
     proposition: "First.",
@@ -1340,11 +1367,11 @@ test("finalisation keeps each survivor's scores, framing and tags when candidate
     integrity: decision({ mean: 0.8 }),
     recovery: "repaired" as const,
     framing: {
-      world: { layer: "real_world" as const, fictional_work: null },
+      world: { layer: "real_world" as const },
       epistemic: { source_commitment: "asserted" as const, modal_frame: "actual" as const },
       temporal: { instability: "mutable" as const },
     },
-    tags: ["first"],
+    entities: [{ text: "First", type: "topic", confidence: 0.9 }],
   };
   const second = {
     ...first,
@@ -1352,7 +1379,7 @@ test("finalisation keeps each survivor's scores, framing and tags when candidate
     proposition: "Second.",
     claim: "Second claim.",
     integrity: decision({ mean: 0.9 }),
-    tags: ["second"],
+    entities: [{ text: "Second", type: "topic", confidence: 0.8 }],
   };
   const result = await run(oneStage(nodeFromPipeline("finalize")), {
     ...initialAtomisationState(source),
@@ -1366,12 +1393,12 @@ test("finalisation keeps each survivor's scores, framing and tags when candidate
     ],
   });
   assert.deepEqual(result.state.output, {
-    atomizationVersion: 9,
+    atomizationVersion: 10,
     status: "completed",
     atoms: [second, first].map((candidate) => ({
       proposition: candidate.proposition,
       claim: candidate.claim,
-      tags: candidate.tags,
+      entities: candidate.entities,
       evidence: {
         sourceId: source.id,
         sourceVersion: source.version,
@@ -1382,7 +1409,7 @@ test("finalisation keeps each survivor's scores, framing and tags when candidate
       framing: candidate.framing,
       scores: { probabilities: candidate.integrity.probabilities, mean: candidate.integrity.mean },
       recovery: "repaired",
-      atomizationVersion: 9,
+      atomizationVersion: 10,
     })),
     candidateRejections: [
       {
