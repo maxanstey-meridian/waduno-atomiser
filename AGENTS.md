@@ -9,8 +9,8 @@ Public wire schemas live in src/contracts and are published through ./contracts.
 Domain owns pure decision types, integrity thresholds and recovery eligibility; pipeline owns internal state schemas
 and consumes the public source/output schemas directly. Contracts never import
 Domain or pipeline internals. Application owns narrow model ports, with no
-contracts or Tandem imports. Pipeline owns
-one native graph with two collections and inline stages; infrastructure implements model ports. Bootstrap's bootstrapAtomiser returns an explicit AtomiserRuntime
+contracts or Tandem imports. Pipeline owns separate APS/Luna and ClaimExtractor
+graphs with shared validation, framing, tagging and finalisation stages; infrastructure implements model ports. Bootstrap's bootstrapAtomiser returns an explicit AtomiserRuntime
 { pipeline: Pipeline<AtomisationState>, close }. The graph factory lives in pipeline/;
 HTTP accepts the pipeline directly. Agent definitions live in agents/ and declare
 explicit input/output types; state types are inferred from their owning Zod schemas. Candidate records carry their own
@@ -20,14 +20,15 @@ the GLiNER subprocess when their lifecycle ends.
 
 The published source schema has opaque id/version, title, text, kind, context
 and evidence passages. No Wikipedia article/revision fields or corpus endpoints.
-The corpus owns source provenance and persistence. Atomisation version is 10;
+The corpus owns source provenance and persistence. Atomisation version is 11;
 ATOMIZATION_VERSION in contracts/atomise.ts is the only owner.
 
 ## Model/runtime constraints
 
 - Gemma-APS takes plain user messages only. Any response_format destroys output.
-- All four generation agents explicitly request reasoning effort `none`.
-- Downstream stages require canonical claims; missing claims fail rather than use propositions.
+- Luna's four generation agents explicitly request reasoning effort `none`.
+- ClaimExtractor uses the pinned Orbitals prompt through its Python adapter and the local oMLX model; its graph uses no Luna client or repair stage.
+- Downstream stages require claims; missing claims fail rather than use propositions.
 - Deduplication rejections are unscored; only integrity rejections carry scores.
 - Send selected text unchanged; no sentence segmenter or source-kind exclusion.
 - Deduplicate exact proposition strings only; never strip semantic punctuation.
@@ -39,13 +40,16 @@ ATOMIZATION_VERSION in contracts/atomise.ts is the only owner.
 - Every route has a meaningful nonblank label.
 - Graphs capture configuration only. Stages read source/signal from execution.
 - Native Tandem max owns child concurrency; do not add striped worker pools.
+- The ClaimExtractor graph checks extracted claims with Jev first. Its integrity gate is off by default, so it retains scored claims without splitting. When enabled, only atomicity failures that pass the other integrity checks go to APS splitting; split children are checked against their parent by Jev and failed claims are rejected without Luna repair.
 - Recovery runs at most six original-candidate sequences per source; child work
   remains serial within each branch. Merge in input order and assign source-wide
   split-child identities there, never from concurrent shared mutation.
 - Native ledger/reporting owns execution observability, not custom collectors.
 - Preserve discovery/integrity/recovery/framing semantics when changing hosting.
 - GLiNER extracts entities from surviving canonical claims with source-title context.
-  Atoms expose original entity text, type and confidence; no spans or resolution.
+  Atoms expose entity text as string tags only when confidence is at least 0.8.
+  Deduplicate exact tag text without regard to case; preserve distinct names and substrings;
+  no types, confidence, spans or resolution are exposed.
 - `pnpm setup:gliner` installs the local Python 3.13 environment and pinned model.
   Runtime loads local weights once per subprocess; stdout is JSON lines and
   diagnostics go to stderr. Tagger failures fail the run, not empty tags.
@@ -55,8 +59,8 @@ ATOMIZATION_VERSION in contracts/atomise.ts is the only owner.
 The demo catalogue lives in `examples/corpus/passages.ts`. Users append `{ id,
 title, text }` entries there. The example corpus API serves every entry; the demo
 fetches them over HTTP and runs each separately. Never replace this flow with test
-fixtures or import the catalogue directly into the demo runner. `task demo` starts
-the watched example API, always enables recovery, and retains pretty reporting
+fixtures or import the catalogue directly into the demo runner. `task demo:luna`
+and `task demo:claim-extractor` start the watched example API; Luna demo enables recovery. Both retain pretty reporting
 and local JSON output. Corpus integration belongs in the example harness, not `src/`.
 The demo owns and closes its watched corpus process; never use global process-name
 matching to kill another checkout's server.

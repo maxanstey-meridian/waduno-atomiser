@@ -24,15 +24,15 @@ import { measureOpenRouterSpend } from "../scripts/openrouter-spend.js";
 import { createRepairAgent } from "../src/agents/repair.js";
 import { createSplitAgent } from "../src/agents/split.js";
 import type { IntegrityClassifier } from "../src/application/ports/integrity-classifier.js";
-import { CandidateRejection } from "../src/contracts/atomise.js";
+import { ATOMIZATION_VERSION, CandidateRejection } from "../src/contracts/atomise.js";
 import { SourceEnvelope } from "../src/contracts/source.js";
 import type { IntegrityDecision } from "../src/domain/integrity.js";
-import { createAtomisationPipeline } from "../src/pipeline/atomise-source.js";
-import type {
-  AtomisationPipelineDependencies,
-  AtomisationPipelineOptions,
-} from "../src/pipeline/atomise-source.js";
 import { candidateRejections } from "../src/pipeline/finalize.js";
+import { createLunaAtomisationPipeline } from "../src/pipeline/luna-atomisation-pipeline.js";
+import type {
+  LunaPipelineDependencies,
+  LunaPipelineOptions,
+} from "../src/pipeline/luna-atomisation-pipeline.js";
 import { AtomisationState, initialAtomisationState } from "../src/pipeline/state.js";
 import { chatServer } from "./helpers/chat-server.js";
 
@@ -88,10 +88,10 @@ const unusedClient: ChatClient = {
 };
 const nodeFromPipeline = (
   id: string,
-  dependencies: Partial<AtomisationPipelineDependencies> = {},
-  options: AtomisationPipelineOptions = {},
+  dependencies: Partial<LunaPipelineDependencies> = {},
+  options: LunaPipelineOptions = {},
 ): Stage<AtomisationState> | Collection<AtomisationState> => {
-  const graph = createAtomisationPipeline(
+  const graph = createLunaAtomisationPipeline(
     {
       apsClient: unusedClient,
       llmClient: unusedClient,
@@ -106,10 +106,8 @@ const nodeFromPipeline = (
   assert(node?.kind === "stage" || node?.kind === "collection");
   return node;
 };
-const recoveryNode = (
-  dependencies: Partial<AtomisationPipelineDependencies>,
-  ledgerPath?: string,
-) => nodeFromPipeline("recovery", dependencies, { ledgerPath });
+const recoveryNode = (dependencies: Partial<LunaPipelineDependencies>, ledgerPath?: string) =>
+  nodeFromPipeline("recovery", dependencies, { ledgerPath });
 
 const runTask = async <I, O>(agent: TaskAgent<I, O>, input: I): Promise<O> => {
   const State = z.object({ value: agent.result.nullable() });
@@ -165,13 +163,9 @@ test(
       const fact = message.match(/Fact \d+\./u)![0];
       return JSON.stringify({ claim: `${title}: ${fact}` });
     });
-    const graph = createAtomisationPipeline(
+    const graph = createLunaAtomisationPipeline(
       {
-        tag: async (title, claims) =>
-          claims.map((claim) => [
-            { text: title, type: "topic", confidence: 0.9 },
-            { text: claim, type: "topic", confidence: 0.8 },
-          ]),
+        tag: async (title, claims) => claims.map((claim) => [title, claim]),
         apsClient: server.client("aps-test"),
         llmClient: server.client("claim-test"),
         classifyIntegrity: async (_source, candidates) => candidates.map(() => decision()),
@@ -201,11 +195,8 @@ test(
         assert.equal(result.succeeded, true, result.summary ?? "failed");
         assert.equal(result.state.output?.atoms.length, 8);
         assert.deepEqual(
-          result.state.output?.atoms.map((atom) => atom.entities),
-          Array.from({ length: 8 }, (_, index) => [
-            { text: title, type: "topic", confidence: 0.9 },
-            { text: `${title}: Fact ${index}.`, type: "topic", confidence: 0.8 },
-          ]),
+          result.state.output?.atoms.map((atom) => atom.tags),
+          Array.from({ length: 8 }, (_, index) => [title, `${title}: Fact ${index}.`]),
         );
         assert.deepEqual(
           result.state.output?.atoms.map((atom) => atom.claim),
@@ -245,7 +236,7 @@ test(
       }
       assert.ok(
         formatDemoResult(state, 1000).includes(
-          `entities: ${JSON.stringify(state.output!.atoms[0]!.entities)}`,
+          `tags: ${JSON.stringify(state.output!.atoms[0]!.tags)}`,
         ),
       );
     }
@@ -429,6 +420,32 @@ test("no-recovery filters candidates and decisions together without adding child
     candidateRejections(result.state.outcomes, result.state.source)[0]?.reason,
     "compound",
   );
+});
+
+test("disabled integrity gate keeps Luna candidates regardless of Jev decision", async () => {
+  const input = {
+    ...initialAtomisationState(source),
+    working: {
+      phase: "assessed",
+      items: [
+        {
+          discoveryIndex: 0,
+          proposition: "The fox jumps and the dog sleeps.",
+          claim: "The fox jumps and the dog sleeps.",
+          integrity: decision({ atomic: false, reason: "compound" }),
+        },
+      ],
+    },
+  };
+  const result = await run(
+    oneStage(nodeFromPipeline("recovery", {}, { integrityGate: false })),
+    input,
+  );
+  assert.deepEqual(
+    result.state.working.items.map((candidate) => candidate.proposition),
+    ["The fox jumps and the dog sleeps."],
+  );
+  assert.deepEqual(candidateRejections(result.state.outcomes, result.state.source), []);
 });
 
 test(
@@ -810,7 +827,7 @@ test("APS receives untouched text and canonicalisation and repair receive bounde
     return JSON.stringify({ claim: "Ayrton Senna won by 0.2 seconds." });
   });
   const bounded = { ...source, text, context };
-  const graph = createAtomisationPipeline(
+  const graph = createLunaAtomisationPipeline(
     {
       apsClient: server.client("aps"),
       llmClient: server.client("claim"),
@@ -1357,7 +1374,7 @@ test("integrity refuses missing and extra classifier decisions", async () => {
   }
 });
 
-test("finalisation keeps each survivor's scores, framing and entities when candidates are reordered", async () => {
+test("finalisation keeps each survivor's scores, framing and tags when candidates are reordered", async () => {
   const first = {
     discoveryIndex: 0,
     proposition: "First.",
@@ -1369,7 +1386,7 @@ test("finalisation keeps each survivor's scores, framing and entities when candi
       epistemic: { source_commitment: "asserted" as const, modal_frame: "actual" as const },
       temporal: { instability: "mutable" as const },
     },
-    entities: [{ text: "First", type: "topic", confidence: 0.9 }],
+    tags: ["First"],
   };
   const second = {
     ...first,
@@ -1377,7 +1394,7 @@ test("finalisation keeps each survivor's scores, framing and entities when candi
     proposition: "Second.",
     claim: "Second claim.",
     integrity: decision({ mean: 0.9 }),
-    entities: [{ text: "Second", type: "topic", confidence: 0.8 }],
+    tags: ["Second"],
   };
   const result = await run(oneStage(nodeFromPipeline("finalize")), {
     ...initialAtomisationState(source),
@@ -1391,12 +1408,12 @@ test("finalisation keeps each survivor's scores, framing and entities when candi
     ],
   });
   assert.deepEqual(result.state.output, {
-    atomizationVersion: 10,
+    atomizationVersion: ATOMIZATION_VERSION,
     status: "completed",
     atoms: [second, first].map((candidate) => ({
       proposition: candidate.proposition,
       claim: candidate.claim,
-      entities: candidate.entities,
+      tags: candidate.tags,
       evidence: {
         sourceId: source.id,
         sourceVersion: source.version,
@@ -1407,7 +1424,7 @@ test("finalisation keeps each survivor's scores, framing and entities when candi
       framing: candidate.framing,
       scores: { probabilities: candidate.integrity.probabilities, mean: candidate.integrity.mean },
       recovery: "repaired",
-      atomizationVersion: 10,
+      atomizationVersion: ATOMIZATION_VERSION,
     })),
     candidateRejections: [
       {
@@ -1451,7 +1468,7 @@ test("blank split-child claims fail before integrity classification", async (t) 
 });
 
 test("the source pipeline exposes eight processing nodes and two terminals", () => {
-  const graph = createAtomisationPipeline({
+  const graph = createLunaAtomisationPipeline({
     apsClient: unusedClient,
     llmClient: unusedClient,
     classifyIntegrity: async () => [],

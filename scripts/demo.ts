@@ -42,7 +42,7 @@ try {
       corpus.origin,
       AbortSignal.any([shutdown.signal, AbortSignal.timeout(10_000)]),
     );
-    console.log(`Loaded ${sources.length} sources from ${corpus.origin}`);
+    console.log(`Loaded ${sources.length} sources from ${corpus.origin} · ${config.pipeline}`);
     const firstUsage = await readOpenRouterUsage(billing, shutdown.signal);
     let previousUsage = firstUsage;
     try {
@@ -65,7 +65,7 @@ try {
         console.log(formatDemoResult(result.state, width, color));
         const { atomsPath, reportPath } = await saveDemoResult(
           result.state,
-          undefined,
+          `.data/demo/${config.pipeline}`,
           measureOpenRouterSpend(before, previousUsage),
         );
         console.log(`\nAtoms saved to: ${atomsPath}\nReport saved to: ${reportPath}`);

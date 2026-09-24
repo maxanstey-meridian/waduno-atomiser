@@ -10,10 +10,15 @@ export type {
   FramingResult,
 } from "./application/ports/framing-classifier.js";
 export {
-  createAtomisationPipeline,
-  type AtomisationPipelineDependencies,
-  type AtomisationPipelineOptions,
-} from "./pipeline/atomise-source.js";
+  createLunaAtomisationPipeline,
+  type LunaPipelineDependencies,
+  type LunaPipelineOptions,
+} from "./pipeline/luna-atomisation-pipeline.js";
+export {
+  createClaimExtractorAtomisationPipeline,
+  type ClaimExtractorPipelineDependencies,
+  type ClaimExtractorPipelineOptions,
+} from "./pipeline/claim-extractor-atomisation-pipeline.js";
 export { AtomisationState, initialAtomisationState } from "./pipeline/state.js";
 export { DiscoveryOutput } from "./agents/parse-propositions.js";
 export type {
@@ -38,7 +43,7 @@ export { CandidateOutcome, CandidateResolution, RepairAttempt } from "./pipeline
 export {
   ATOMIZATION_VERSION,
   AtomDraft,
-  AtomEntity,
+  AtomTag,
   type AtomEvidence,
   AtomFraming,
   AtomizationOutput,

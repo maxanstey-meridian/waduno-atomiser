@@ -55,8 +55,8 @@ export const formatDemoResult = (state: AtomisationState, width = 100, color = f
     (a, b) => a.candidate.discoveryIndex - b.candidate.discoveryIndex,
   );
   const lines = [
-    `\n${paint(["bold", "cyan"], `MINED · ${roots.length} propositions`)}`,
-    paint("dim", "Jev checks must all pass; probabilities are not an overall truth score."),
+    `\n${paint(["bold", "cyan"], `MINED · ${roots.length} candidates`)}`,
+    paint("dim", "Jev probabilities are judgements, not an overall truth score."),
   ];
   let produced = 0;
   const render = (entry: CandidateOutcome, label: string, prefix: string) => {
@@ -116,9 +116,7 @@ export const formatDemoResult = (state: AtomisationState, width = 100, color = f
   );
   for (const [index, atom] of atoms.entries()) {
     lines.push(paragraph(`${index + 1}. ${atom.claim}`, "  ", width));
-    lines.push(
-      paint("dim", paragraph(`entities: ${JSON.stringify(atom.entities)}`, "     ", width)),
-    );
+    lines.push(paint("dim", paragraph(`tags: ${JSON.stringify(atom.tags)}`, "     ", width)));
   }
   return lines.join("\n");
 };

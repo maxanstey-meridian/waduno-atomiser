@@ -1,6 +1,6 @@
 {
   "name": "@waduno-group/atomiser",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "description": "Source content to evidenced atoms.",
   "license": "MIT",

@@ -3,6 +3,8 @@ import { z } from "zod";
 export const SourcePassage = z.strictObject({
   passageId: z.string().min(1),
   blockId: z.string().min(1),
+  startOffset: z.number().int().nonnegative().optional(),
+  endOffset: z.number().int().positive().optional(),
   text: z.string().min(1),
 });
 export type SourcePassage = z.infer<typeof SourcePassage>;

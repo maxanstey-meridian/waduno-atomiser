@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AtomEntity, AtomFraming } from "../contracts/atomise.js";
+import { AtomFraming, AtomTag } from "../contracts/atomise.js";
 import { IntegrityDecision, passesIntegrity } from "../domain/integrity.js";
 
 export const DiscoveredCandidate = z.strictObject({
@@ -19,12 +19,15 @@ export const AssessedCandidate = CanonicalCandidate.extend({ integrity: Integrit
 export type AssessedCandidate = z.infer<typeof AssessedCandidate>;
 
 export const AcceptedCandidate = AssessedCandidate.extend({
-  integrity: IntegrityDecision.refine(passesIntegrity, "Accepted candidate failed integrity."),
+  integrity: IntegrityDecision.refine(
+    (decision) => decision.gateBypassed === true || passesIntegrity(decision),
+    "Accepted candidate failed integrity.",
+  ),
 });
 export type AcceptedCandidate = z.infer<typeof AcceptedCandidate>;
 
 export const FramedCandidate = AcceptedCandidate.extend({ framing: AtomFraming });
 export type FramedCandidate = z.infer<typeof FramedCandidate>;
 
-export const TaggedCandidate = FramedCandidate.extend({ entities: z.array(AtomEntity) });
+export const TaggedCandidate = FramedCandidate.extend({ tags: z.array(AtomTag) });
 export type TaggedCandidate = z.infer<typeof TaggedCandidate>;

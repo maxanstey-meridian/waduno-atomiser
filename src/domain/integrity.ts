@@ -21,6 +21,7 @@ export const IntegrityDecision = IntegrityScores.extend({
   context_complete: z.boolean(),
   atomic: z.boolean(),
   reason: z.string(),
+  gateBypassed: z.literal(true).optional(),
 });
 export type IntegrityDecision = z.infer<typeof IntegrityDecision>;
 

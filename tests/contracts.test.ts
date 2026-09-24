@@ -83,8 +83,8 @@ test("HTTP depends on the pipeline and contracts, not bootstrap or model adapter
   );
 });
 
-test("version 10 distinguishes unscored duplicates from scored integrity rejections", () => {
-  assert.equal(ATOMIZATION_VERSION, 10);
+test("version 11 distinguishes unscored duplicates from scored integrity rejections", () => {
+  assert.equal(ATOMIZATION_VERSION, 11);
   const rejection = {
     candidateIndex: 1,
     proposition: "A fact.",

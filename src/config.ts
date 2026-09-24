@@ -27,6 +27,8 @@ const modelBaseUrl = z
 // Validate the environment-facing names once, then hand the rest of the app a
 // typed config. Secret variable names are retained where Tandem resolves the key.
 const EnvironmentConfig = z.object({
+  ATOMISER_PIPELINE: z.enum(["luna", "claim-extractor"]).default("claim-extractor"),
+  ATOMISER_INTEGRITY_GATE: z.enum(["true", "false"]).optional(),
   APS_BASE_URL: modelBaseUrl.default("http://127.0.0.1:8092/v1"),
   APS_MODEL: z.string().trim().min(1).default("gemma-7b-aps-it-8bit"),
   APS_API_KEY_ENVIRONMENT_VARIABLE: z.string().trim().min(1).default("APS_API_KEY"),
@@ -43,6 +45,10 @@ const EnvironmentConfig = z.object({
   LLM_MODEL: z.string().trim().min(1).default("openai/gpt-6-luna"),
   LLM_API_KEY_ENVIRONMENT_VARIABLE: z.string().trim().min(1).default("OPENROUTER_API_KEY"),
   LLM_REQUEST_TIMEOUT_MILLISECONDS: positiveInteger(120_000),
+  CLAIM_EXTRACTOR_BASE_URL: modelBaseUrl.default("http://127.0.0.1:8092/v1"),
+  CLAIM_EXTRACTOR_MODEL: z.string().trim().min(1).default("claim-extractor-4B-q-2605-oQ8-MTP"),
+  CLAIM_EXTRACTOR_API_KEY_ENVIRONMENT_VARIABLE: z.string().trim().min(1).default("APS_API_KEY"),
+  CLAIM_EXTRACTOR_REQUEST_TIMEOUT_MILLISECONDS: positiveInteger(180_000),
 });
 
 const requiredApiKey = (environment: NodeJS.ProcessEnv, name: string, purpose: string) => {
@@ -54,6 +60,8 @@ const requiredApiKey = (environment: NodeJS.ProcessEnv, name: string, purpose: s
 };
 
 export type AtomiserConfig = {
+  readonly pipeline: "luna" | "claim-extractor";
+  readonly integrityGate: boolean;
   readonly apsBaseUrl: string;
   readonly apsModel: string;
   readonly apsApiKeyEnvironmentVariable?: string;
@@ -68,6 +76,10 @@ export type AtomiserConfig = {
   readonly llmModel: string;
   readonly llmApiKeyEnvironmentVariable: string;
   readonly llmRequestTimeoutMilliseconds: number;
+  readonly claimExtractorBaseUrl: string;
+  readonly claimExtractorModel: string;
+  readonly claimExtractorApiKeyEnvironmentVariable: string;
+  readonly claimExtractorRequestTimeoutMilliseconds: number;
 };
 
 // Entrypoints pass their environment here. Defaults and required-key checks are
@@ -78,12 +90,19 @@ export const parseAtomiserEnv = (environment: NodeJS.ProcessEnv = process.env): 
   const openRouterApiKey =
     value.OPENROUTER_API_KEY ??
     requiredApiKey(environment, "OPENROUTER_API_KEY", "Jev classification");
-  requiredApiKey(
-    environment,
-    value.LLM_API_KEY_ENVIRONMENT_VARIABLE,
-    "canonicalisation and repair",
-  );
+  if (value.ATOMISER_PIPELINE === "luna") {
+    requiredApiKey(
+      environment,
+      value.LLM_API_KEY_ENVIRONMENT_VARIABLE,
+      "canonicalisation and repair",
+    );
+  }
   return {
+    pipeline: value.ATOMISER_PIPELINE,
+    integrityGate:
+      value.ATOMISER_INTEGRITY_GATE === undefined
+        ? value.ATOMISER_PIPELINE === "luna"
+        : value.ATOMISER_INTEGRITY_GATE === "true",
     apsBaseUrl: value.APS_BASE_URL,
     apsModel: value.APS_MODEL,
     ...(environment[apsApiKeyEnvironmentVariable]?.trim() ? { apsApiKeyEnvironmentVariable } : {}),
@@ -97,6 +116,10 @@ export const parseAtomiserEnv = (environment: NodeJS.ProcessEnv = process.env): 
     llmModel: value.LLM_MODEL,
     llmApiKeyEnvironmentVariable: value.LLM_API_KEY_ENVIRONMENT_VARIABLE,
     llmRequestTimeoutMilliseconds: value.LLM_REQUEST_TIMEOUT_MILLISECONDS,
+    claimExtractorBaseUrl: value.CLAIM_EXTRACTOR_BASE_URL,
+    claimExtractorModel: value.CLAIM_EXTRACTOR_MODEL,
+    claimExtractorApiKeyEnvironmentVariable: value.CLAIM_EXTRACTOR_API_KEY_ENVIRONMENT_VARIABLE,
+    claimExtractorRequestTimeoutMilliseconds: value.CLAIM_EXTRACTOR_REQUEST_TIMEOUT_MILLISECONDS,
     ...(value.TANDEM_LEDGER_PATH === undefined ? {} : { ledgerPath: value.TANDEM_LEDGER_PATH }),
   };
 };

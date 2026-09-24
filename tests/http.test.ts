@@ -6,7 +6,7 @@ import { parseAtomiserEnv } from "../src/config.js";
 import { ATOMIZATION_VERSION } from "../src/contracts/atomise.js";
 import { SourceEnvelope } from "../src/contracts/source.js";
 import { createAtomiserServer } from "../src/interface/http/server.js";
-import { createAtomisationPipeline } from "../src/pipeline/atomise-source.js";
+import { createLunaAtomisationPipeline } from "../src/pipeline/luna-atomisation-pipeline.js";
 import { AtomisationState } from "../src/pipeline/state.js";
 import { chatServer } from "./helpers/chat-server.js";
 
@@ -24,12 +24,11 @@ test("HTTP validates input, extracts every source kind, and distinguishes empty 
   const server = await chatServer(t, (request) =>
     request.model === "aps" ? discovery : JSON.stringify({ claim: "The fox jumps." }),
   );
-  const pipeline = createAtomisationPipeline(
+  const pipeline = createLunaAtomisationPipeline(
     {
       apsClient: server.client("aps"),
       llmClient: server.client("claim"),
-      tag: async (_title, claims) =>
-        claims.map(() => [{ text: "Fox", type: "individual", confidence: 0.9 }]),
+      tag: async (_title, claims) => claims.map(() => ["Fox"]),
       classifyIntegrity: async (_source, candidates) =>
         candidates.map(() => ({
           supported: true,
@@ -72,12 +71,13 @@ test("HTTP validates input, extracts every source kind, and distinguishes empty 
     assert.equal(response.statusCode, 200, response.body);
     assert.equal(response.json().status, "completed");
     assert.equal(response.json().atoms[0].claim, "The fox jumps.");
+    assert.deepEqual(response.json().atoms[0].tags, ["Fox"]);
     assert.equal(response.json().atomizationVersion, ATOMIZATION_VERSION);
   }
   discovery = "PROPOSITIONS:\n- The fox jumps.\n- The fox jumps.";
   const duplicates = await app.inject({ method: "POST", url: "/atomise", payload: source });
   assert.equal(duplicates.statusCode, 200, duplicates.body);
-  assert.equal(duplicates.json().atomizationVersion, 10);
+  assert.equal(duplicates.json().atomizationVersion, ATOMIZATION_VERSION);
   assert.equal(duplicates.json().atoms.length, 1);
   assert.deepEqual(duplicates.json().candidateRejections, [
     {
@@ -102,6 +102,7 @@ test("HTTP validates input, extracts every source kind, and distinguishes empty 
 
 test("configuration permits unauthenticated APS and explicitly configured LAN HTTP", () => {
   const config = parseAtomiserEnv({
+    ATOMISER_PIPELINE: "luna",
     OPENROUTER_API_KEY: "test",
     APS_BASE_URL: "http://192.168.1.20:8092/v1",
   });
@@ -109,6 +110,7 @@ test("configuration permits unauthenticated APS and explicitly configured LAN HT
   assert.equal(config.apsBaseUrl, "http://192.168.1.20:8092/v1");
   assert.equal("corpusBaseUrl" in config, false);
   const localLlm = parseAtomiserEnv({
+    ATOMISER_PIPELINE: "luna",
     OPENROUTER_API_KEY: "jev-key",
     APS_API_KEY: "local-key",
     LLM_BASE_URL: "http://127.0.0.1:8888/v1",
@@ -128,6 +130,27 @@ test("configuration permits unauthenticated APS and explicitly configured LAN HT
   );
   assert.throws(() =>
     parseAtomiserEnv({ OPENROUTER_API_KEY: "test", APS_BASE_URL: "file:///tmp/model" }),
+  );
+});
+
+test("ClaimExtractor configuration does not require a Luna or local endpoint key", () => {
+  const config = parseAtomiserEnv({
+    OPENROUTER_API_KEY: "jev-key",
+  });
+  assert.equal(config.pipeline, "claim-extractor");
+  assert.equal(config.integrityGate, false);
+  assert.equal(config.claimExtractorModel, "claim-extractor-4B-q-2605-oQ8-MTP");
+  assert.equal(
+    parseAtomiserEnv({ ATOMISER_PIPELINE: "luna", OPENROUTER_API_KEY: "jev-key" }).integrityGate,
+    true,
+  );
+  assert.equal(
+    parseAtomiserEnv({
+      ATOMISER_PIPELINE: "luna",
+      ATOMISER_INTEGRITY_GATE: "false",
+      OPENROUTER_API_KEY: "jev-key",
+    }).integrityGate,
+    false,
   );
 });
 

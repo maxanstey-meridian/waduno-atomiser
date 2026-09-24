@@ -5,6 +5,14 @@ tasks:
   serve:
     cmds: [pnpm build, pnpm start]
   demo:
+    cmds: [{ task: demo:claim-extractor }]
+  demo:luna:
+    env:
+      ATOMISER_PIPELINE: luna
+    cmds: [node --env-file-if-exists=.env --import tsx scripts/demo.ts]
+  demo:claim-extractor:
+    env:
+      ATOMISER_PIPELINE: claim-extractor
     cmds: [node --env-file-if-exists=.env --import tsx scripts/demo.ts]
   example-corpus:
     desc: Run the watched example API in the foreground
