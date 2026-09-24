@@ -1,16 +1,10 @@
 import { z } from "zod";
 
-export const SourcePassage = z
-  .strictObject({
-    passageId: z.string().min(1),
-    blockId: z.string().min(1),
-    startOffset: z.number().int().nonnegative(),
-    endOffset: z.number().int().positive(),
-    text: z.string().min(1),
-  })
-  .refine((p) => p.endOffset - p.startOffset === [...p.text].length, {
-    message: "Passage offsets must count Unicode code points",
-  });
+export const SourcePassage = z.strictObject({
+  passageId: z.string().min(1),
+  blockId: z.string().min(1),
+  text: z.string().min(1),
+});
 export type SourcePassage = z.infer<typeof SourcePassage>;
 
 export const SourceEnvelope = z.strictObject({

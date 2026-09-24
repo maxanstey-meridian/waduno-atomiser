@@ -32,7 +32,6 @@ const EnvironmentConfig = z.object({
   APS_API_KEY_ENVIRONMENT_VARIABLE: z.string().trim().min(1).default("APS_API_KEY"),
   OPENROUTER_API_KEY: z.string().trim().min(1).optional(),
   TANDEM_LEDGER_PATH: z.string().trim().min(1).default(".data/atomize.sqlite3"),
-  GLINER_PYTHON: z.string().trim().min(1).default(".venv/bin/python"),
   GLINER_MODEL_PATH: z.string().trim().min(1).default(".data/gliner2.5-base-v1"),
   ATOMIZER_RECOVERY: z
     .enum(["true", "false"])
@@ -89,7 +88,7 @@ export const parseAtomiserEnv = (environment: NodeJS.ProcessEnv = process.env): 
     apsModel: value.APS_MODEL,
     ...(environment[apsApiKeyEnvironmentVariable]?.trim() ? { apsApiKeyEnvironmentVariable } : {}),
     openRouterApiKey,
-    glinerPython: value.GLINER_PYTHON,
+    glinerPython: ".venv/bin/python",
     glinerModelPath: value.GLINER_MODEL_PATH,
     apsRecovery: value.ATOMIZER_RECOVERY,
     apsRequestTimeoutMilliseconds: value.APS_REQUEST_TIMEOUT_MILLISECONDS,

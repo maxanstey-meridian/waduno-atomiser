@@ -41,8 +41,8 @@ OpenRouter but can use a local OpenAI-compatible endpoint. Jev uses OpenRouter;
 ## Getting started
 
 Requires Node.js 22+, pnpm, Python 3.13, [Task](https://taskfile.dev), an
-OpenAI-compatible Gemma-APS endpoint and an OpenRouter API key. The current Tandem
-runtime bundle requires macOS on Apple silicon and the .NET 10 runtime.
+OpenAI-compatible Gemma-APS endpoint and an OpenRouter API key. The Tandem
+runtime bundle supports Linux x64 and macOS on Apple silicon, and requires the .NET 10 runtime.
 
 ```sh
 pnpm install
@@ -52,25 +52,25 @@ pnpm setup:gliner
 
 Configure `.env` using the values in `.env.example`:
 
-| Variable                           | Example / default              | Purpose                                                                 |
-| ---------------------------------- | ------------------------------ | ----------------------------------------------------------------------- |
-| `APS_BASE_URL`                     | `http://127.0.0.1:8092/v1`     | OpenAI-compatible Gemma-APS endpoint; serve this model separately.      |
-| `APS_MODEL`                        | `gemma-7b-aps-it-8bit`         | Model name exposed by your APS server.                                  |
-| `APS_API_KEY`                      | Optional                       | Leave blank for an unauthenticated APS endpoint.                        |
-| `OPENROUTER_API_KEY`               | Required                       | OpenRouter API key for Jev, also used by the default LLM configuration. |
-| `LLM_BASE_URL`                     | `https://openrouter.ai/api/v1` | OpenAI-compatible endpoint for canonicalisation and repair.             |
-| `LLM_MODEL`                        | `openai/gpt-6-luna`            | Shared LLM for canonicalisation and repair, including split children.   |
-| `LLM_API_KEY_ENVIRONMENT_VARIABLE` | `OPENROUTER_API_KEY`           | Name of the environment variable containing the LLM endpoint's key.     |
-| `LLM_REQUEST_TIMEOUT_MILLISECONDS` | `120000`                       | LLM request timeout in milliseconds.                                    |
-| `ATOMIZER_RECOVERY`                | `true`                         | Enable repair and splitting; the demo always enables recovery.          |
-| `ATOMISER_HOST`                    | `127.0.0.1`                    | Atomiser HTTP host bind address.                                        |
-| `ATOMISER_PORT`                    | `8099`                         | Atomiser HTTP port.                                                     |
-| `ATOMISER_CONCURRENCY`             | `2`                            | Maximum active HTTP source runs.                                        |
-| `ATOMISER_TIMEOUT_MS`              | `600000`                       | Timeout per HTTP source run, in milliseconds.                           |
-| `CORPUS_BASE_URL`                  | `http://127.0.0.1:8098`        | Local example corpus API address used by the demo.                      |
-| `TANDEM_LEDGER_PATH`               | `.data/atomize.sqlite3`        | SQLite execution ledger path.                                           |
-| `GLINER_PYTHON`                    | `.venv/bin/python`             | Python interpreter installed by `pnpm setup:gliner`.                    |
-| `GLINER_MODEL_PATH`                | `.data/gliner2.5-base-v1`      | Local weights downloaded once by `pnpm setup:gliner`.                   |
+| Variable                           | Example / default              | Purpose                                                                                  |
+| ---------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------- |
+| `APS_BASE_URL`                     | `http://127.0.0.1:8092/v1`     | OpenAI-compatible Gemma-APS endpoint; serve this model separately.                       |
+| `APS_MODEL`                        | `gemma-7b-aps-it-8bit`         | Model name exposed by your APS server.                                                   |
+| `APS_API_KEY`                      | Optional                       | Leave blank for an unauthenticated APS endpoint.                                         |
+| `OPENROUTER_API_KEY`               | Required                       | OpenRouter API key for Jev, also used by the default LLM configuration.                  |
+| `LLM_BASE_URL`                     | `https://openrouter.ai/api/v1` | OpenAI-compatible endpoint for canonicalisation and repair.                              |
+| `LLM_MODEL`                        | `openai/gpt-6-luna`            | Shared LLM for canonicalisation and repair, including split children.                    |
+| `LLM_API_KEY_ENVIRONMENT_VARIABLE` | `OPENROUTER_API_KEY`           | Name of the environment variable containing the LLM endpoint's key.                      |
+| `LLM_REQUEST_TIMEOUT_MILLISECONDS` | `120000`                       | LLM request timeout in milliseconds.                                                     |
+| `ATOMIZER_RECOVERY`                | `true`                         | Enable repair and splitting; the demo always enables recovery.                           |
+| `ATOMISER_HOST`                    | `127.0.0.1`                    | Atomiser HTTP host bind address.                                                         |
+| `ATOMISER_PORT`                    | `8099`                         | Atomiser HTTP port.                                                                      |
+| `ATOMISER_CONCURRENCY`             | `2`                            | Maximum active HTTP source runs.                                                         |
+| `ATOMISER_TIMEOUT_MS`              | `600000`                       | Timeout per HTTP source run, in milliseconds.                                            |
+| `CORPUS_BASE_URL`                  | `http://127.0.0.1:8098`        | Local example corpus API address used by the demo.                                       |
+| `TANDEM_LEDGER_PATH`               | `.data/atomize.sqlite3`        | SQLite execution ledger path.                                                            |
+| `PYTHON`                           | `python3.13`                   | Python executable used to create `.venv`; setup and runtime then use `.venv/bin/python`. |
+| `GLINER_MODEL_PATH`                | `.data/gliner2.5-base-v1`      | Local weights downloaded once by `pnpm setup:gliner`.                                    |
 
 ```sh
 task demo

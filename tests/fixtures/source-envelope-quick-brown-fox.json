@@ -12,8 +12,6 @@
     {
       "passageId": "urn:waduno:source-passage:quick-brown-fox",
       "blockId": "urn:waduno:block:quick-brown-fox",
-      "startOffset": 0,
-      "endOffset": 44,
       "text": "The quick brown fox jumps over the lazy dog."
     }
   ]

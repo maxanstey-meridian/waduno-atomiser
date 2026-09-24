@@ -27,8 +27,6 @@ test(
           {
             passageId: "p1",
             blockId: "b1",
-            startOffset: 0,
-            endOffset: [...fixture.source.text].length,
             text: fixture.source.text,
           },
         ],
@@ -76,7 +74,7 @@ test(
       text,
       kind: "paragraph",
       context: { sectionPath: [], leadIn: "Mira approached the gate of North Depot." },
-      passages: [{ passageId: "p", blockId: "b", startOffset: 0, endOffset: text.length, text }],
+      passages: [{ passageId: "p", blockId: "b", text }],
     });
     const [decision] = await createJevClassifiers(apiKey).classifyIntegrity(
       source,

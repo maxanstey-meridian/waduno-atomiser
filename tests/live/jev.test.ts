@@ -16,8 +16,6 @@ const canarySource = (text: string) =>
       {
         passageId: "passage:1",
         blockId: "block:1",
-        startOffset: 0,
-        endOffset: [...text].length,
         text,
       },
     ],
@@ -55,8 +53,6 @@ test("live Jev recognises the labelled semantic canaries", { timeout: 300_000 },
         {
           passageId: "passage:1",
           blockId: "block:1",
-          startOffset: 0,
-          endOffset: [...fixture.source].length,
           text: fixture.source,
         },
       ],

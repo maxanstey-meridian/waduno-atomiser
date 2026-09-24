@@ -3,5 +3,5 @@ allowBuilds:
   "@openrouter/sdk": false
   esbuild: true
 minimumReleaseAgeExclude:
-  - "@maxanstey-meridian/tandem@0.1.5"
+  - "@maxanstey-meridian/tandem@0.1.6"
   - "@openrouter/sdk@1.3.17"

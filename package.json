@@ -1,6 +1,6 @@
 {
   "name": "@waduno-group/atomiser",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Source content to evidenced atoms.",
   "license": "MIT",
@@ -27,12 +27,12 @@
     "test": "node --import tsx --test tests/*.test.ts",
     "test:jev": "node --env-file-if-exists=.env --import tsx --test tests/live/jev.test.ts",
     "test:jev:context": "node --env-file-if-exists=.env --import tsx --test tests/live/jev-context.test.ts",
-    "setup:gliner": "python3.13 -m venv --clear .venv && .venv/bin/python -m pip install -r python/requirements.txt && .venv/bin/python python/gliner.py --setup .data/gliner2.5-base-v1",
+    "setup:gliner": "node --env-file-if-exists=.env scripts/setup-gliner.mjs",
     "serve": "pnpm build && pnpm start",
     "start": "node --env-file-if-exists=.env dist/src/server.js"
   },
   "dependencies": {
-    "@maxanstey-meridian/tandem": "0.1.5",
+    "@maxanstey-meridian/tandem": "0.1.6",
     "@openrouter/sdk": "1.3.17",
     "fastify": "^5.0.0",
     "zod": "^4.3.6"

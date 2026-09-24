@@ -13,8 +13,6 @@ export const sourceEnvelope = (passage: ExamplePassage): SourceEnvelope =>
       {
         passageId: `urn:example:passage:${passage.id}`,
         blockId: `urn:example:block:${passage.id}`,
-        startOffset: 0,
-        endOffset: [...passage.text].length,
         text: passage.text,
       },
     ],

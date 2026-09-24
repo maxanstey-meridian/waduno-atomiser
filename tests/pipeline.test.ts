@@ -641,8 +641,6 @@ test("context-only failures trigger repair and must pass context revalidation", 
       {
         passageId: "race",
         blockId: "race",
-        startOffset: 0,
-        endOffset: repaired.length,
         text: repaired,
       },
     ],

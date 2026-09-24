@@ -285,7 +285,7 @@ test("integrity rejects missing, mistyped and out-of-range provider answers with
     text,
     kind: "paragraph",
     context: { sectionPath: ["2024"], leadIn: "Mira was at North Depot." },
-    passages: [{ passageId: "p", blockId: "b", startOffset: 0, endOffset: text.length, text }],
+    passages: [{ passageId: "p", blockId: "b", text }],
   });
   for (const answer of [
     undefined,
@@ -325,7 +325,7 @@ test("integrity carries lead-in and section context while standalone remains iso
     text,
     kind: "paragraph",
     context,
-    passages: [{ passageId: "p", blockId: "b", startOffset: 0, endOffset: text.length, text }],
+    passages: [{ passageId: "p", blockId: "b", text }],
   });
   let calls = 0;
   const transport: typeof fetch = async (input, init) => {

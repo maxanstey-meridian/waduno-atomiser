@@ -34,7 +34,6 @@ test("the demo HTTP client consumes the entire editable catalogue, including app
   assert.equal(sources.length, catalogue.length);
   assert.equal(new Set(sources.map((source) => source.id)).size, catalogue.length);
   const last = sources.at(-1);
-  assert.equal(last?.passages[0]?.endOffset, [...appended.text].length);
   assert.equal(last?.passages[0]?.text, appended.text);
   const health = await fetch(`${baseUrl}/health`);
   assert.deepEqual(await health.json(), { service: "example-corpus", status: "ok" });
