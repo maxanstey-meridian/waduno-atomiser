@@ -139,7 +139,7 @@ unless noted otherwise.
 | `LLM_MODEL`                                    | `openai/gpt-6-luna`                 | Shared Luna pipeline model for canonicalisation and repair, including split children.         |
 | `LLM_API_KEY_ENVIRONMENT_VARIABLE`             | `OPENROUTER_API_KEY`                | Name of the variable holding the LLM endpoint key.                                            |
 | `LLM_REQUEST_TIMEOUT_MILLISECONDS`             | `120000`                            | LLM request timeout.                                                                          |
-| `ATOMIZER_RECOVERY`                            | `true`                              | Enable Luna repair and splitting when gated; the demo enables this setting.                   |
+| `ATOMISER_RECOVERY`                            | `true`                              | Enable Luna repair and splitting when gated; the demo enables this setting.                   |
 | `ATOMISER_HOST`                                | `127.0.0.1`                         | HTTP host bind address.                                                                       |
 | `ATOMISER_PORT`                                | `8099`                              | HTTP port.                                                                                    |
 | `ATOMISER_CONCURRENCY`                         | `2`                                 | Maximum active HTTP source runs.                                                              |

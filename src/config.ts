@@ -35,7 +35,7 @@ const EnvironmentConfig = z.object({
   OPENROUTER_API_KEY: z.string().trim().min(1).optional(),
   TANDEM_LEDGER_PATH: z.string().trim().min(1).optional(),
   GLINER_MODEL_PATH: z.string().trim().min(1).default(".data/gliner2.5-base-v1"),
-  ATOMIZER_RECOVERY: z
+  ATOMISER_RECOVERY: z
     .enum(["true", "false"])
     .default("true")
     .transform((value) => value === "true"),
@@ -109,7 +109,7 @@ export const parseAtomiserEnv = (environment: NodeJS.ProcessEnv = process.env): 
     openRouterApiKey,
     glinerPython: ".venv/bin/python",
     glinerModelPath: value.GLINER_MODEL_PATH,
-    apsRecovery: value.ATOMIZER_RECOVERY,
+    apsRecovery: value.ATOMISER_RECOVERY,
     apsRequestTimeoutMilliseconds: value.APS_REQUEST_TIMEOUT_MILLISECONDS,
     apsIdleTimeoutMilliseconds: value.APS_IDLE_TIMEOUT_MILLISECONDS,
     llmBaseUrl: value.LLM_BASE_URL,
