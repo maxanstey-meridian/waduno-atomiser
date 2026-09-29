@@ -199,16 +199,65 @@ test(
         .then((response) => response);
       await started;
       assert.equal((await app.inject("/health")).json().active, 1);
-      assert.equal(
-        (await app.inject({ method: "POST", url: "/atomise", payload: source })).statusCode,
-        503,
-      );
+      const queued = app.inject({ method: "POST", url: "/atomise", payload: source });
+      assert.equal((await app.inject("/health")).json().active, 1);
       if (shutdown) {
         cancel();
       }
       assert.equal((await running).statusCode, shutdown ? 503 : 504);
+      assert.equal((await queued).statusCode, shutdown ? 503 : 504);
       assert.equal(cancelled, true);
       assert.equal((await app.inject("/health")).json().active, 0);
     }
   },
 );
+
+test("HTTP waits for a free atomisation slot", async (t) => {
+  let entered = 0;
+  let releaseFirst = () => {};
+  const firstGate = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  let firstStarted = () => {};
+  const started = new Promise<void>((resolve) => {
+    firstStarted = resolve;
+  });
+  const work = stage<AtomisationState>({
+    id: "work",
+    execute: async (state) => {
+      entered++;
+      if (entered === 1) {
+        firstStarted();
+        await firstGate;
+      }
+      return state;
+    },
+  });
+  const done = output<AtomisationState>({ id: "done", summary: () => "done" });
+  const graph = pipeline({
+    name: "queue",
+    state: AtomisationState,
+    start: work,
+    nodes: [work, done],
+    outputs: [done],
+    routes: [route({ from: work, to: done, label: "done" })],
+  });
+  const { app } = createAtomiserServer(graph, { concurrency: 1, timeoutMs: 5000 });
+  t.after(() => app.close());
+  const first = app.inject({ method: "POST", url: "/atomise", payload: source });
+  await started;
+  const second = app.inject({ method: "POST", url: "/atomise", payload: source });
+  let secondSettled = false;
+  void second.then(() => {
+    secondSettled = true;
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal((await app.inject("/health")).json().active, 1);
+  assert.equal(entered, 1);
+  assert.equal(secondSettled, false);
+  releaseFirst();
+  assert.equal((await first).statusCode, 502);
+  assert.equal((await second).statusCode, 502);
+  assert.equal(entered, 2);
+  assert.equal((await app.inject("/health")).json().active, 0);
+});

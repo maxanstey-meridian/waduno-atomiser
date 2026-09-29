@@ -22,6 +22,44 @@ export const createAtomiserServer = (
   const app = Fastify({ bodyLimit: 2_000_000 });
   const shutdown = new AbortController();
   let active = 0;
+  const waiting: {
+    resolve: () => void;
+    reject: (reason: unknown) => void;
+    signal: AbortSignal;
+    abort: () => void;
+  }[] = [];
+  const acquire = (signal: AbortSignal) => {
+    signal.throwIfAborted();
+    if (active < options.concurrency && waiting.length === 0) {
+      active++;
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve, reject) => {
+      const waiter = {
+        resolve,
+        reject,
+        signal,
+        abort: () => {
+          const index = waiting.indexOf(waiter);
+          if (index >= 0) {
+            waiting.splice(index, 1);
+          }
+          reject(signal.reason);
+        },
+      };
+      waiting.push(waiter);
+      signal.addEventListener("abort", waiter.abort, { once: true });
+    });
+  };
+  const release = () => {
+    const next = waiting.shift();
+    if (next) {
+      next.signal.removeEventListener("abort", next.abort);
+      next.resolve();
+    } else {
+      active--;
+    }
+  };
   app.get("/health", async () => ({
     ready: !shutdown.signal.aborted,
     atomizationVersion: ATOMIZATION_VERSION,
@@ -32,9 +70,6 @@ export const createAtomiserServer = (
     if (!parsed.success) {
       return reply.code(400).send({ code: "invalid_source", message: parsed.error.message });
     }
-    if (active >= options.concurrency || shutdown.signal.aborted) {
-      return reply.code(503).send({ code: "busy", message: "Atomiser capacity is occupied" });
-    }
     const cancelled = new AbortController();
     const disconnect = () => {
       if (!reply.raw.writableFinished) {
@@ -42,11 +77,14 @@ export const createAtomiserServer = (
       }
     };
     reply.raw.on("close", disconnect);
-    active++;
     const timeout = AbortSignal.timeout(options.timeoutMs);
+    const signal = AbortSignal.any([shutdown.signal, cancelled.signal, timeout]);
+    let acquired = false;
     try {
+      await acquire(signal);
+      acquired = true;
       const result = await run(pipeline, initialAtomisationState(parsed.data), {
-        signal: AbortSignal.any([shutdown.signal, cancelled.signal, timeout]),
+        signal,
         ...(options.ledgerPath ? { ledgerPath: options.ledgerPath } : {}),
         enableLedgerTools: false,
       });
@@ -63,7 +101,9 @@ export const createAtomiserServer = (
         message: error instanceof Error ? error.message : "Atomisation failed",
       });
     } finally {
-      active--;
+      if (acquired) {
+        release();
+      }
       reply.raw.off("close", disconnect);
     }
   });
