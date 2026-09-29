@@ -1,7 +1,5 @@
 import { run } from "@maxanstey-meridian/tandem";
 import { OpenRouter } from "@openrouter/sdk";
-import { mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
 import { fetchExampleSources } from "../examples/corpus/client.js";
 import { parseExampleCorpusEnv } from "../examples/corpus/config.js";
 import { startExampleCorpus } from "../examples/corpus/start.js";
@@ -21,10 +19,7 @@ const config = {
   apsRecovery: true,
 };
 const address = parseExampleCorpusEnv();
-if (config.ledgerPath) {
-  await mkdir(dirname(config.ledgerPath), { recursive: true });
-}
-const { pipeline, close } = bootstrapAtomiser(config);
+const { pipeline, ledgerPath, close } = await bootstrapAtomiser(config);
 const billing = new OpenRouter({
   apiKey: config.openRouterApiKey,
   retryConfig: { strategy: "none" },
@@ -51,7 +46,7 @@ try {
         const before = previousUsage;
         const result = await run(pipeline, initialAtomisationState(source), {
           signal: AbortSignal.any([shutdown.signal, AbortSignal.timeout(600_000)]),
-          ledgerPath: config.ledgerPath,
+          ledgerPath,
           enableLedgerTools: false,
         }).finally(async () => {
           previousUsage = await readOpenRouterUsage(billing, shutdown.signal, ACCOUNTING_WAIT_MS);

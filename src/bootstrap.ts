@@ -1,4 +1,6 @@
 import type { ChatClient, Pipeline } from "@maxanstey-meridian/tandem";
+import { mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AtomiserConfig } from "./config.js";
 import { createClaimExtractor } from "./infrastructure/claim-extractor.js";
@@ -10,10 +12,14 @@ import type { AtomisationState } from "./pipeline/state.js";
 
 export type AtomiserRuntime = {
   readonly pipeline: Pipeline<AtomisationState>;
+  readonly ledgerPath?: string;
   readonly close: () => void;
 };
 
-export const bootstrapAtomiser = (config: AtomiserConfig): AtomiserRuntime => {
+export const bootstrapAtomiser = async (config: AtomiserConfig): Promise<AtomiserRuntime> => {
+  if (config.ledgerPath) {
+    await mkdir(dirname(config.ledgerPath), { recursive: true });
+  }
   const apsClient: ChatClient = {
     kind: "openai-compatible",
     version: 1,
@@ -73,5 +79,5 @@ export const bootstrapAtomiser = (config: AtomiserConfig): AtomiserRuntime => {
             integrityGate: config.integrityGate,
           },
         );
-  return { pipeline, close: tagger.close };
+  return { pipeline, ledgerPath: config.ledgerPath, close: tagger.close };
 };

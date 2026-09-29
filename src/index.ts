@@ -50,5 +50,3 @@ export {
   CandidateRejection,
 } from "./contracts/atomise.js";
 export { SourceEnvelope, SourcePassage } from "./contracts/source.js";
-export { bootstrapAtomiser, type AtomiserRuntime } from "./bootstrap.js";
-export { parseAtomiserEnv, type AtomiserConfig } from "./config.js";

@@ -1,6 +1,5 @@
 import { run } from "@maxanstey-meridian/tandem";
-import { readFile, mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
+import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { bootstrapAtomiser } from "../src/bootstrap.js";
 import { parseAtomiserEnv } from "../src/config.js";
@@ -30,10 +29,7 @@ const width = process.stdout.columns ?? 100;
 if (values.demo) {
   console.log(formatDemoInput(source, width));
 }
-if (config.ledgerPath) {
-  await mkdir(dirname(config.ledgerPath), { recursive: true });
-}
-const { pipeline, close } = bootstrapAtomiser(config);
+const { pipeline, ledgerPath, close } = await bootstrapAtomiser(config);
 const shutdown = new AbortController();
 const stop = () => shutdown.abort();
 process.once("SIGINT", stop);
@@ -41,7 +37,7 @@ process.once("SIGTERM", stop);
 try {
   const result = await run(pipeline, initialAtomisationState(source), {
     signal: AbortSignal.any([shutdown.signal, AbortSignal.timeout(600_000)]),
-    ledgerPath: config.ledgerPath,
+    ledgerPath,
     enableLedgerTools: false,
   });
   if (!result.succeeded || result.state.output === null) {

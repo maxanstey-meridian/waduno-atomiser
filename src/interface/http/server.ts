@@ -7,7 +7,6 @@ import { initialAtomisationState, type AtomisationState } from "../../pipeline/s
 export type AtomiserServerOptions = {
   readonly concurrency: number;
   readonly timeoutMs: number;
-  /** Requests allowed to wait for a slot; beyond this the server answers 503 busy. */
   readonly queueLimit: number;
   readonly ledgerPath?: string;
 };
@@ -72,6 +71,9 @@ export const createAtomiserServer = (
     if (!parsed.success) {
       return reply.code(400).send({ code: "invalid_source", message: parsed.error.message });
     }
+    if (waiting.length >= options.queueLimit) {
+      return reply.code(503).send({ code: "busy", message: "Atomiser queue is full" });
+    }
     const cancelled = new AbortController();
     const disconnect = () => {
       if (!reply.raw.writableFinished) {
@@ -79,10 +81,6 @@ export const createAtomiserServer = (
       }
     };
     reply.raw.on("close", disconnect);
-    if (active >= options.concurrency && waiting.length >= options.queueLimit) {
-      reply.raw.off("close", disconnect);
-      return reply.code(503).send({ code: "busy", message: "Atomiser queue is full" });
-    }
     const queued = AbortSignal.any([shutdown.signal, cancelled.signal]);
     let timeout: AbortSignal | undefined;
     let acquired = false;
@@ -94,7 +92,7 @@ export const createAtomiserServer = (
       const signal = AbortSignal.any([queued, timeout]);
       const result = await run(pipeline, initialAtomisationState(parsed.data), {
         signal,
-        ...(options.ledgerPath ? { ledgerPath: options.ledgerPath } : {}),
+        ledgerPath: options.ledgerPath,
         enableLedgerTools: false,
       });
       if (!result.succeeded || result.state.output === null) {

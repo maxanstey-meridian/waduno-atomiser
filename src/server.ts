@@ -1,20 +1,15 @@
-import { mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
 import { bootstrapAtomiser } from "./bootstrap.js";
 import { parseAtomiserEnv, parseServerEnv } from "./config.js";
 import { createAtomiserServer } from "./interface/http/server.js";
 
 const config = parseAtomiserEnv();
 const host = parseServerEnv();
-if (config.ledgerPath) {
-  await mkdir(dirname(config.ledgerPath), { recursive: true });
-}
-const { pipeline, close } = bootstrapAtomiser(config);
+const { pipeline, ledgerPath, close } = await bootstrapAtomiser(config);
 const { app, cancel } = createAtomiserServer(pipeline, {
   concurrency: host.ATOMISER_CONCURRENCY,
   timeoutMs: host.ATOMISER_TIMEOUT_MS,
   queueLimit: host.ATOMISER_QUEUE_LIMIT,
-  ledgerPath: config.ledgerPath,
+  ledgerPath,
 });
 app.addHook("onClose", async () => {
   close();

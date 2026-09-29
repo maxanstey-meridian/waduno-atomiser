@@ -14,7 +14,6 @@
     "LICENSE"
   ],
   "type": "module",
-  "main": "./dist/src/index.js",
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
@@ -29,7 +28,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node --input-type=module -e \"import { cp } from 'node:fs/promises'; await cp('python', 'dist/python', { recursive: true, filter: (path) => !path.includes('__pycache__') });\"",
+    "build": "rm -rf dist && tsc -p tsconfig.json && node --input-type=module -e \"import { cp } from 'node:fs/promises'; await cp('python', 'dist/python', { recursive: true, filter: (path) => !path.includes('__pycache__') });\"",
     "check": "pnpm build && pnpm lint && pnpm format:check && pnpm test",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",

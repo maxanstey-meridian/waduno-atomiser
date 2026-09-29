@@ -120,7 +120,7 @@ export const parseAtomiserEnv = (environment: NodeJS.ProcessEnv = process.env): 
     claimExtractorModel: value.CLAIM_EXTRACTOR_MODEL,
     claimExtractorApiKeyEnvironmentVariable: value.CLAIM_EXTRACTOR_API_KEY_ENVIRONMENT_VARIABLE,
     claimExtractorRequestTimeoutMilliseconds: value.CLAIM_EXTRACTOR_REQUEST_TIMEOUT_MILLISECONDS,
-    ...(value.TANDEM_LEDGER_PATH === undefined ? {} : { ledgerPath: value.TANDEM_LEDGER_PATH }),
+    ledgerPath: value.TANDEM_LEDGER_PATH,
   };
 };
 
