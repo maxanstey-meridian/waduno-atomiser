@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { SourcePassage } from "./source.js";
 export { SourceEnvelope, SourcePassage } from "./source.js";
-export const ATOMIZATION_VERSION = 11;
 const WorldFraming = z.strictObject({
   layer: z.enum(["real_world", "fictional_world", "undetermined"]),
 });
@@ -83,7 +82,6 @@ const AtomFields = z.strictObject({
   claim: z.string().min(1),
   tags: z.array(AtomTag),
   evidence: AtomEvidence,
-  atomizationVersion: z.number().int().positive(),
 });
 
 export const AtomDraft = AtomFields.extend({
@@ -94,7 +92,6 @@ export const AtomDraft = AtomFields.extend({
 export type AtomDraft = z.infer<typeof AtomDraft>;
 
 export const AtomizationOutput = z.strictObject({
-  atomizationVersion: z.number().int().positive(),
   status: z.enum(["completed", "no_propositions", "no_valid_candidates"]),
   atoms: z.array(AtomDraft).readonly(),
   candidateRejections: z.array(CandidateRejection).readonly(),

@@ -1,12 +1,14 @@
 import { run, type Pipeline } from "@maxanstey-meridian/tandem";
 import Fastify, { type FastifyInstance } from "fastify";
-import { ATOMIZATION_VERSION, AtomizationOutput } from "../../contracts/atomise.js";
+import { AtomizationOutput } from "../../contracts/atomise.js";
 import { SourceEnvelope } from "../../contracts/source.js";
 import { initialAtomisationState, type AtomisationState } from "../../pipeline/state.js";
 
 export type AtomiserServerOptions = {
   readonly concurrency: number;
   readonly timeoutMs: number;
+  /** Requests allowed to wait for a slot; beyond this the server answers 503 busy. */
+  readonly queueLimit: number;
   readonly ledgerPath?: string;
 };
 
@@ -62,8 +64,8 @@ export const createAtomiserServer = (
   };
   app.get("/health", async () => ({
     ready: !shutdown.signal.aborted,
-    atomizationVersion: ATOMIZATION_VERSION,
     active,
+    waiting: waiting.length,
   }));
   app.post("/atomise", async (request, reply) => {
     const parsed = SourceEnvelope.safeParse(request.body);
@@ -77,12 +79,19 @@ export const createAtomiserServer = (
       }
     };
     reply.raw.on("close", disconnect);
-    const timeout = AbortSignal.timeout(options.timeoutMs);
-    const signal = AbortSignal.any([shutdown.signal, cancelled.signal, timeout]);
+    if (active >= options.concurrency && waiting.length >= options.queueLimit) {
+      reply.raw.off("close", disconnect);
+      return reply.code(503).send({ code: "busy", message: "Atomiser queue is full" });
+    }
+    const queued = AbortSignal.any([shutdown.signal, cancelled.signal]);
+    let timeout: AbortSignal | undefined;
     let acquired = false;
     try {
-      await acquire(signal);
+      await acquire(queued);
       acquired = true;
+      // The pipeline budget starts once a slot is held, not while queued.
+      timeout = AbortSignal.timeout(options.timeoutMs);
+      const signal = AbortSignal.any([queued, timeout]);
       const result = await run(pipeline, initialAtomisationState(parsed.data), {
         signal,
         ...(options.ledgerPath ? { ledgerPath: options.ledgerPath } : {}),
@@ -96,8 +105,9 @@ export const createAtomiserServer = (
       }
       return AtomizationOutput.parse(result.state.output);
     } catch (error) {
-      return reply.code(timeout.aborted ? 504 : shutdown.signal.aborted ? 503 : 502).send({
-        code: timeout.aborted ? "atomisation_timeout" : "atomisation_failed",
+      const timedOut = timeout?.aborted === true;
+      return reply.code(timedOut ? 504 : shutdown.signal.aborted ? 503 : 502).send({
+        code: timedOut ? "atomisation_timeout" : "atomisation_failed",
         message: error instanceof Error ? error.message : "Atomisation failed",
       });
     } finally {

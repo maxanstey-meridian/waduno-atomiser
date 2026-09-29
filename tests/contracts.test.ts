@@ -4,7 +4,7 @@ import { dirname, resolve, sep } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { ATOMIZATION_VERSION, CandidateRejection } from "../src/contracts/atomise.js";
+import { CandidateRejection } from "../src/contracts/atomise.js";
 
 const assertImports = (
   directory: string,
@@ -83,8 +83,7 @@ test("HTTP depends on the pipeline and contracts, not bootstrap or model adapter
   );
 });
 
-test("version 11 distinguishes unscored duplicates from scored integrity rejections", () => {
-  assert.equal(ATOMIZATION_VERSION, 11);
+test("unscored duplicates are distinguished from scored integrity rejections", () => {
   const rejection = {
     candidateIndex: 1,
     proposition: "A fact.",

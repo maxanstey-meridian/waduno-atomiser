@@ -1,8 +1,4 @@
-import {
-  ATOMIZATION_VERSION,
-  type AtomDraft,
-  type CandidateRejection,
-} from "../contracts/atomise.js";
+import type { AtomDraft, CandidateRejection } from "../contracts/atomise.js";
 import type { SourceEnvelope } from "../contracts/source.js";
 import type { TaggedCandidate } from "./candidate.js";
 import type { CandidateOutcome } from "./outcomes.js";
@@ -22,7 +18,6 @@ const toAtomDraft = (candidate: TaggedCandidate, source: SourceEnvelope): AtomDr
   framing: candidate.framing,
   scores: { probabilities: candidate.integrity.probabilities, mean: candidate.integrity.mean },
   ...(candidate.recovery === undefined ? {} : { recovery: candidate.recovery }),
-  atomizationVersion: ATOMIZATION_VERSION,
 });
 
 export const candidateRejections = (
@@ -65,7 +60,6 @@ export const finalise = (state: AtomisationState): AtomisationState => {
   return {
     ...state,
     output: {
-      atomizationVersion: ATOMIZATION_VERSION,
       status: atoms.length === 0 ? "no_valid_candidates" : "completed",
       atoms,
       candidateRejections: candidateRejections(state.outcomes, state.source),

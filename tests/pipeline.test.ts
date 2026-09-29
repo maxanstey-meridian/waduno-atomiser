@@ -24,7 +24,7 @@ import { measureOpenRouterSpend } from "../scripts/openrouter-spend.js";
 import { createRepairAgent } from "../src/agents/repair.js";
 import { createSplitAgent } from "../src/agents/split.js";
 import type { IntegrityClassifier } from "../src/application/ports/integrity-classifier.js";
-import { ATOMIZATION_VERSION, CandidateRejection } from "../src/contracts/atomise.js";
+import { CandidateRejection } from "../src/contracts/atomise.js";
 import { SourceEnvelope } from "../src/contracts/source.js";
 import type { IntegrityDecision } from "../src/domain/integrity.js";
 import { candidateRejections } from "../src/pipeline/finalize.js";
@@ -1408,7 +1408,6 @@ test("finalisation keeps each survivor's scores, framing and tags when candidate
     ],
   });
   assert.deepEqual(result.state.output, {
-    atomizationVersion: ATOMIZATION_VERSION,
     status: "completed",
     atoms: [second, first].map((candidate) => ({
       proposition: candidate.proposition,
@@ -1424,7 +1423,6 @@ test("finalisation keeps each survivor's scores, framing and tags when candidate
       framing: candidate.framing,
       scores: { probabilities: candidate.integrity.probabilities, mean: candidate.integrity.mean },
       recovery: "repaired",
-      atomizationVersion: ATOMIZATION_VERSION,
     })),
     candidateRejections: [
       {

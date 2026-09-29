@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { parseAtomiserEnv } from "../src/config.js";
-import { ATOMIZATION_VERSION } from "../src/contracts/atomise.js";
 import { SourceEnvelope } from "../src/contracts/source.js";
 import { createAtomiserServer } from "../src/interface/http/server.js";
 import { createLunaAtomisationPipeline } from "../src/pipeline/luna-atomisation-pipeline.js";
@@ -55,7 +54,11 @@ test("HTTP validates input, extracts every source kind, and distinguishes empty 
     },
     { recovery: false },
   );
-  const { app } = createAtomiserServer(pipeline, { concurrency: 1, timeoutMs: 5000 });
+  const { app } = createAtomiserServer(pipeline, {
+    concurrency: 1,
+    timeoutMs: 5000,
+    queueLimit: 8,
+  });
   t.after(() => app.close());
   assert.equal(
     (await app.inject({ method: "POST", url: "/atomise", payload: { articleId: "wrong" } }))
@@ -72,12 +75,10 @@ test("HTTP validates input, extracts every source kind, and distinguishes empty 
     assert.equal(response.json().status, "completed");
     assert.equal(response.json().atoms[0].claim, "The fox jumps.");
     assert.deepEqual(response.json().atoms[0].tags, ["Fox"]);
-    assert.equal(response.json().atomizationVersion, ATOMIZATION_VERSION);
   }
   discovery = "PROPOSITIONS:\n- The fox jumps.\n- The fox jumps.";
   const duplicates = await app.inject({ method: "POST", url: "/atomise", payload: source });
   assert.equal(duplicates.statusCode, 200, duplicates.body);
-  assert.equal(duplicates.json().atomizationVersion, ATOMIZATION_VERSION);
   assert.equal(duplicates.json().atoms.length, 1);
   assert.deepEqual(duplicates.json().candidateRejections, [
     {
@@ -192,6 +193,7 @@ test(
       const { app, cancel } = createAtomiserServer(graph, {
         concurrency: 1,
         timeoutMs: shutdown ? 5000 : 300,
+        queueLimit: 8,
       });
       t.after(() => app.close());
       const running = app
@@ -242,7 +244,7 @@ test("HTTP waits for a free atomisation slot", async (t) => {
     outputs: [done],
     routes: [route({ from: work, to: done, label: "done" })],
   });
-  const { app } = createAtomiserServer(graph, { concurrency: 1, timeoutMs: 5000 });
+  const { app } = createAtomiserServer(graph, { concurrency: 1, timeoutMs: 5000, queueLimit: 8 });
   t.after(() => app.close());
   const first = app.inject({ method: "POST", url: "/atomise", payload: source });
   await started;
@@ -260,4 +262,51 @@ test("HTTP waits for a free atomisation slot", async (t) => {
   assert.equal((await second).statusCode, 502);
   assert.equal(entered, 2);
   assert.equal((await app.inject("/health")).json().active, 0);
+});
+
+test("HTTP answers busy once the wait queue is full", async (t) => {
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let started = () => {};
+  const running = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const work = stage<AtomisationState>({
+    id: "work",
+    execute: async (state) => {
+      started();
+      await gate;
+      return state;
+    },
+  });
+  const done = output<AtomisationState>({ id: "done", summary: () => "done" });
+  const graph = pipeline({
+    name: "full-queue",
+    state: AtomisationState,
+    start: work,
+    nodes: [work, done],
+    outputs: [done],
+    routes: [route({ from: work, to: done, label: "done" })],
+  });
+  const { app } = createAtomiserServer(graph, { concurrency: 1, timeoutMs: 5000, queueLimit: 1 });
+  t.after(() => {
+    release();
+    return app.close();
+  });
+  const first = app.inject({ method: "POST", url: "/atomise", payload: source });
+  await running;
+  const second = app.inject({ method: "POST", url: "/atomise", payload: source });
+  for (let attempt = 0; (await app.inject("/health")).json().waiting !== 1; attempt++) {
+    assert.ok(attempt < 100, "second request never queued");
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+  }
+  const third = await app.inject({ method: "POST", url: "/atomise", payload: source });
+  assert.equal(third.statusCode, 503);
+  assert.equal(third.json().code, "busy");
+  release();
+  await first;
+  await second;
+  assert.equal((await app.inject("/health")).json().waiting, 0);
 });

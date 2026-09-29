@@ -20,8 +20,8 @@ the GLiNER subprocess when their lifecycle ends.
 
 The published source schema has opaque id/version, title, text, kind, context
 and evidence passages. No Wikipedia article/revision fields or corpus endpoints.
-The corpus owns source provenance and persistence. Atomisation version is 11;
-ATOMIZATION_VERSION in contracts/atomise.ts is the only owner.
+The corpus owns source provenance and persistence. Atoms carry no version: a
+contract change is a breaking release, and consumers migrate their stored atoms.
 
 ## Model/runtime constraints
 

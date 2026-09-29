@@ -41,7 +41,6 @@ export {
 } from "./pipeline/candidate.js";
 export { CandidateOutcome, CandidateResolution, RepairAttempt } from "./pipeline/outcomes.js";
 export {
-  ATOMIZATION_VERSION,
   AtomDraft,
   AtomTag,
   type AtomEvidence,

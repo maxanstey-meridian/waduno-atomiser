@@ -1,5 +1,5 @@
 import { agent, type ChatClient, type Agent } from "@maxanstey-meridian/tandem";
-import { ATOMIZATION_VERSION, type AtomizationOutput } from "../contracts/atomise.js";
+import type { AtomizationOutput } from "../contracts/atomise.js";
 import type { AtomisationState } from "../pipeline/state.js";
 import type { DiscoveryOutput } from "./parse-propositions.js";
 import { parseApsPropositions } from "./parse-propositions.js";
@@ -33,7 +33,6 @@ export const createDiscoveryAgent = (apsClient: ChatClient): Agent<AtomisationSt
   });
 
 export const noPropositionsOutput = (): AtomizationOutput => ({
-  atomizationVersion: ATOMIZATION_VERSION,
   status: "no_propositions",
   atoms: [],
   candidateRejections: [],

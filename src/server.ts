@@ -13,6 +13,7 @@ const { pipeline, close } = bootstrapAtomiser(config);
 const { app, cancel } = createAtomiserServer(pipeline, {
   concurrency: host.ATOMISER_CONCURRENCY,
   timeoutMs: host.ATOMISER_TIMEOUT_MS,
+  queueLimit: host.ATOMISER_QUEUE_LIMIT,
   ledgerPath: config.ledgerPath,
 });
 app.addHook("onClose", async () => {

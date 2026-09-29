@@ -1,9 +1,18 @@
 {
-  "name": "@waduno-group/atomiser",
-  "version": "0.3.0",
-  "private": true,
+  "name": "@maxanstey-meridian/waduno-atomiser",
+  "version": "0.4.0",
   "description": "Source content to evidenced atoms.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maxanstey-meridian/waduno-atomiser.git"
+  },
+  "files": [
+    "dist/src",
+    "dist/python",
+    "README.md",
+    "LICENSE"
+  ],
   "type": "module",
   "main": "./dist/src/index.js",
   "exports": {
@@ -15,6 +24,9 @@
       "types": "./dist/src/contracts/atomise.d.ts",
       "import": "./dist/src/contracts/atomise.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && node --input-type=module -e \"import { cp } from 'node:fs/promises'; await cp('python', 'dist/python', { recursive: true, filter: (path) => !path.includes('__pycache__') });\"",
@@ -29,20 +41,24 @@
     "test:jev:context": "node --env-file-if-exists=.env --import tsx --test tests/live/jev-context.test.ts",
     "setup:gliner": "node --env-file-if-exists=.env scripts/setup-gliner.mjs",
     "serve": "pnpm build && pnpm start",
-    "start": "node --env-file-if-exists=.env dist/src/server.js"
+    "start": "node --env-file-if-exists=.env dist/src/server.js",
+    "prepublishOnly": "pnpm check"
   },
   "dependencies": {
     "@maxanstey-meridian/tandem": "0.1.6",
     "@openrouter/sdk": "1.3.17",
-    "fastify": "^5.0.0",
-    "zod": "^4.3.6"
+    "fastify": "^5.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
     "oxfmt": "^0.62.0",
     "oxlint": "^1.77.0",
     "tsx": "^4.20.6",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "zod": "^4.3.6"
   },
   "engines": {
     "node": ">=22"

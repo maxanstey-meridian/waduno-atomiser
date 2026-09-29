@@ -33,7 +33,7 @@ const EnvironmentConfig = z.object({
   APS_MODEL: z.string().trim().min(1).default("gemma-7b-aps-it-8bit"),
   APS_API_KEY_ENVIRONMENT_VARIABLE: z.string().trim().min(1).default("APS_API_KEY"),
   OPENROUTER_API_KEY: z.string().trim().min(1).optional(),
-  TANDEM_LEDGER_PATH: z.string().trim().min(1).default(".data/atomize.sqlite3"),
+  TANDEM_LEDGER_PATH: z.string().trim().min(1).optional(),
   GLINER_MODEL_PATH: z.string().trim().min(1).default(".data/gliner2.5-base-v1"),
   ATOMIZER_RECOVERY: z
     .enum(["true", "false"])
@@ -129,6 +129,7 @@ const ServerConfig = z.object({
   ATOMISER_PORT: z.coerce.number().int().min(0).max(65535).default(8099),
   ATOMISER_CONCURRENCY: positiveInteger(2),
   ATOMISER_TIMEOUT_MS: positiveInteger(600_000),
+  ATOMISER_QUEUE_LIMIT: positiveInteger(8),
 });
 export type ServerConfig = z.infer<typeof ServerConfig>;
 

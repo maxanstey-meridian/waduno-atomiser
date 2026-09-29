@@ -144,9 +144,10 @@ unless noted otherwise.
 | `ATOMISER_HOST`                                | `127.0.0.1`                         | HTTP host bind address.                                                                       |
 | `ATOMISER_PORT`                                | `8099`                              | HTTP port.                                                                                    |
 | `ATOMISER_CONCURRENCY`                         | `2`                                 | Maximum active HTTP source runs.                                                              |
-| `ATOMISER_TIMEOUT_MS`                          | `600000`                            | Timeout per HTTP source run, in milliseconds.                                                 |
+| `ATOMISER_TIMEOUT_MS`                          | `600000`                            | Timeout per HTTP source run once it holds a slot, in milliseconds.                            |
+| `ATOMISER_QUEUE_LIMIT`                         | `8`                                 | Requests allowed to wait for a slot; beyond this the host answers 503 `busy`.                 |
 | `CORPUS_BASE_URL`                              | `http://127.0.0.1:8098`             | Example corpus API address used by the demo.                                                  |
-| `TANDEM_LEDGER_PATH`                           | `.data/atomize.sqlite3`             | SQLite execution ledger path.                                                                 |
+| `TANDEM_LEDGER_PATH`                           | unset                               | Optional SQLite execution ledger path; unset keeps no run history.                            |
 | `PYTHON`                                       | `python3.13`                        | Executable used to create `.venv`; runtime uses `.venv/bin/python`.                           |
 | `GLINER_MODEL_PATH`                            | `.data/gliner2.5-base-v1`           | Local GLiNER weights downloaded by setup.                                                     |
 
@@ -215,8 +216,8 @@ Standalone claim:
 ```
 
 The following abbreviated output is from the earlier recorded Luna demo. It
-illustrates the decisions and scores, not a fresh benchmark of ClaimExtractor or
-version 11; omitted results, tags, timing and costs are not implied:
+illustrates the decisions and scores, not a fresh benchmark of ClaimExtractor;
+omitted results, tags, timing and costs are not implied:
 
 ```text
 [1] ACCEPTED
@@ -240,6 +241,20 @@ occupied port fails startup; it never kills or silently reuses another process.
 `task example-corpus` runs the watched API independently; stop it with Ctrl-C
 before running the demo on the same port. [SOURCES.md](examples/corpus/SOURCES.md)
 records attribution for the included Wikipedia-derived passages.
+
+## Using the contracts
+
+The source envelope and atomisation output schemas are published for callers:
+
+```sh
+pnpm add @maxanstey-meridian/waduno-atomiser zod
+```
+
+```ts
+import { AtomizationOutput, SourceEnvelope } from "@maxanstey-meridian/waduno-atomiser/contracts";
+```
+
+Zod 4 is a peer dependency so callers share one Zod instance with the schemas.
 
 ## Development
 
