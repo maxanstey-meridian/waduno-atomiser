@@ -50,10 +50,8 @@ included, and exact duplicate text is collapsed without regard to case, keeping
 the first spelling. Distinct names are kept even when one contains another.
 Entity types, confidence values and spans are not included in the output.
 
-Both pipelines produce atomisation contract version **11**. Each atom carries its
-claim, proposition, source evidence, integrity scores, framing and tags, plus a
-recovery marker when applicable. Version 11 replaces version 10's `entities`
-objects with string `tags`; consumers need to update accordingly.
+Each atom carries its claim, proposition, source evidence, integrity scores,
+framing and tags, plus a recovery marker when applicable.
 
 Malformed model output, missing classifier answers and failed dependencies fail
 the run. They are not converted into empty extraction, zero scores or unchanged
@@ -65,7 +63,8 @@ successful `no_propositions` result; rejecting every candidate produces
 
 This is a TypeScript application on Node.js, with Zod wire contracts and a small
 Fastify host exposing `POST /atomise`. [Tandem] runs the pipeline, manages
-collection concurrency and records execution in SQLite. The public schemas live
+collection concurrency and, when `TANDEM_LEDGER_PATH` is set, records execution
+in SQLite. The public schemas live
 in [src/contracts](src/contracts) and are exported through the package's
 `/contracts` entry point. Model adapters sit behind application ports; shared
 pipeline stages handle integrity, framing, tagging and finalisation.
@@ -169,7 +168,7 @@ curl -sS http://127.0.0.1:8099/atomise \
 
 `POST /atomise` returns `completed`, `no_propositions` or `no_valid_candidates`,
 with `atoms` and `candidateRejections`. `GET /health` reports host readiness,
-active runs and the atomisation version; it does not probe model dependencies.
+active runs and queued requests (`waiting`); it does not probe model dependencies.
 
 For a single local source file:
 
