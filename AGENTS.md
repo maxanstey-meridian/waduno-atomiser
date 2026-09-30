@@ -6,16 +6,16 @@ host. One module, no corpus client, storage or background worker.
 ## Architecture
 
 Public wire schemas live in src/contracts and are published through ./contracts.
-Domain owns pure decision types, integrity thresholds and recovery eligibility; pipeline owns internal state schemas
+Domain owns pure decision types, integrity thresholds and split eligibility; pipeline owns internal state schemas
 and consumes the public source/output schemas directly. Contracts never import
 Domain or pipeline internals. Application owns narrow model ports, with no
-contracts or Tandem imports. Pipeline owns separate APS/Luna and ClaimExtractor
-graphs with shared validation, framing, tagging and finalisation stages; infrastructure implements model ports. Bootstrap's bootstrapAtomiser returns an explicit AtomiserRuntime
+contracts or Tandem imports. Pipeline owns the ClaimExtractor graph and its
+integrity, framing, tagging and finalisation stages; infrastructure implements model ports. Bootstrap's bootstrapAtomiser returns an explicit AtomiserRuntime
 { pipeline: Pipeline<AtomisationState>, close }. The graph factory lives in pipeline/;
 HTTP accepts the pipeline directly. Agent definitions live in agents/ and declare
 explicit input/output types; state types are inferred from their owning Zod schemas. Candidate records carry their own
-assessment and enrichment under a discriminated working phase. Recovery takes one
-assessed candidate and returns an outcome; the recovery collection applies ordered child identities. HTTP host and CLI invoke native Tandem run directly and close
+assessment and enrichment under a discriminated working phase. Claim resolution takes one
+assessed candidate and returns an outcome; the resolve-claims collection applies ordered split-child identities. HTTP host and CLI invoke native Tandem run directly and close
 the GLiNER subprocess when their lifecycle ends.
 
 The published source schema has opaque id/version, title, text, kind, context
@@ -26,12 +26,12 @@ contract change is a breaking release, and consumers migrate their stored atoms.
 ## Model/runtime constraints
 
 - Gemma-APS takes plain user messages only. Any response_format destroys output.
-- Luna's four generation agents explicitly request reasoning effort `none`.
-- ClaimExtractor uses the pinned Orbitals prompt through its Python adapter and the local oMLX model; its graph uses no Luna client or repair stage.
+- The APS split agent explicitly requests reasoning effort `none`.
+- ClaimExtractor uses the pinned Orbitals prompt through its Python adapter and the local oMLX model.
 - Downstream stages require claims; missing claims fail rather than use propositions.
 - Deduplication rejections are unscored; only integrity rejections carry scores.
 - Send selected text unchanged; no sentence segmenter or source-kind exclusion.
-- Deduplicate exact proposition strings only; never strip semantic punctuation.
+- Deduplicate exact claim strings only; never strip semantic punctuation.
 - Operational failures fail the run; do not replace failed transformations with
   unchanged claims, empty results or synthetic probabilities.
 - Tandem raw parse receives raw text; validateFor/apply receive parsed candidates.
@@ -40,12 +40,12 @@ contract change is a breaking release, and consumers migrate their stored atoms.
 - Every route has a meaningful nonblank label.
 - Graphs capture configuration only. Stages read source/signal from execution.
 - Native Tandem max owns child concurrency; do not add striped worker pools.
-- The ClaimExtractor graph checks extracted claims with Jev first. Its integrity gate is off by default, so it retains scored claims without splitting. When enabled, only atomicity failures that pass the other integrity checks go to APS splitting; split children are checked against their parent by Jev and failed claims are rejected without Luna repair.
-- Recovery runs at most six original-candidate sequences per source; child work
+- The ClaimExtractor graph checks extracted claims with Jev first. All five checks must pass; only atomicity failures that pass the other integrity checks go to APS splitting; split children are checked against their parent by Jev and failed claims are rejected.
+- Claim resolution runs at most six original-candidate sequences per source; child work
   remains serial within each branch. Merge in input order and assign source-wide
   split-child identities there, never from concurrent shared mutation.
 - Native ledger/reporting owns execution observability, not custom collectors.
-- Preserve discovery/integrity/recovery/framing semantics when changing hosting.
+- Preserve extraction/integrity/splitting/framing semantics when changing hosting.
 - GLiNER extracts entities from surviving canonical claims with source-title context.
   Atoms expose entity text as string tags only when confidence is at least 0.8.
   Deduplicate exact tag text without regard to case; preserve distinct names and substrings;
@@ -59,9 +59,8 @@ contract change is a breaking release, and consumers migrate their stored atoms.
 The demo catalogue lives in `examples/corpus/passages.ts`. Users append `{ id,
 title, text }` entries there. The example corpus API serves every entry; the demo
 fetches them over HTTP and runs each separately. Never replace this flow with test
-fixtures or import the catalogue directly into the demo runner. `task demo:luna`
-and `task demo:claim-extractor` start the watched example API; Luna demo enables recovery. Both retain pretty reporting
-and local JSON output. Corpus integration belongs in the example harness, not `src/`.
+fixtures or import the catalogue directly into the demo runner. `task demo`
+starts the watched example API and retains pretty reporting and local JSON output. Corpus integration belongs in the example harness, not `src/`.
 The demo owns and closes its watched corpus process; never use global process-name
 matching to kill another checkout's server.
 

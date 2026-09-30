@@ -4,7 +4,6 @@ import { parseApsPropositions } from "../src/agents/parse-propositions.js";
 import { assembleFraming } from "../src/domain/framing.js";
 import {
   acceptsIntegrityProbability,
-  canRepair,
   canSplit,
   foldIntegrityChecks,
   passesIntegrity,
@@ -94,7 +93,7 @@ test("framing preserves labels and enforces fictional-world stability", () => {
   );
 });
 
-test("integrity gates every check at 0.6 and limits recovery to eligible failures", () => {
+test("integrity gates every check at 0.6 and limits splitting to atomicity failures", () => {
   assert.equal(acceptsIntegrityProbability(0.599999), false);
   assert.equal(acceptsIntegrityProbability(0.6), true);
   assert.equal(acceptsIntegrityProbability(1), true);
@@ -115,7 +114,6 @@ test("integrity gates every check at 0.6 and limits recovery to eligible failure
     reason: "",
   };
   assert.equal(passesIntegrity(accepted), true);
-  assert.equal(canRepair(accepted), false);
   assert.equal(canSplit(accepted), false);
   for (const key of [
     "supported",
@@ -126,7 +124,6 @@ test("integrity gates every check at 0.6 and limits recovery to eligible failure
   ] as const) {
     const failed = { ...accepted, [key]: false };
     assert.equal(passesIntegrity(failed), false, key);
-    assert.equal(canRepair(failed), key === "standalone" || key === "context_complete", key);
     assert.equal(canSplit(failed), key === "atomic", key);
   }
   for (const key of ["supported", "meaning_preserved"] as const) {
@@ -137,10 +134,8 @@ test("integrity gates every check at 0.6 and limits recovery to eligible failure
       context_complete: false,
       atomic: false,
     };
-    assert.equal(canRepair(failed), false);
     assert.equal(canSplit(failed), false);
   }
   const unresolvedCompound = { ...accepted, standalone: false, atomic: false };
-  assert.equal(canRepair(unresolvedCompound), true);
   assert.equal(canSplit(unresolvedCompound), false);
 });

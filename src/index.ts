@@ -10,11 +10,6 @@ export type {
   FramingResult,
 } from "./application/ports/framing-classifier.js";
 export {
-  createLunaAtomisationPipeline,
-  type LunaPipelineDependencies,
-  type LunaPipelineOptions,
-} from "./pipeline/luna-atomisation-pipeline.js";
-export {
   createClaimExtractorAtomisationPipeline,
   type ClaimExtractorPipelineDependencies,
   type ClaimExtractorPipelineOptions,
@@ -39,7 +34,7 @@ export {
   FramedCandidate,
   TaggedCandidate,
 } from "./pipeline/candidate.js";
-export { CandidateOutcome, CandidateResolution, RepairAttempt } from "./pipeline/outcomes.js";
+export { CandidateOutcome, CandidateResolution } from "./pipeline/outcomes.js";
 export {
   AtomDraft,
   AtomTag,

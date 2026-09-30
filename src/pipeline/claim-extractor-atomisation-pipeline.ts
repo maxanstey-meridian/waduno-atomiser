@@ -7,12 +7,12 @@ import {
   type Pipeline,
 } from "@maxanstey-meridian/tandem";
 import { z } from "zod";
-import { noPropositionsOutput } from "../agents/discover.js";
 import { createSplitAgent } from "../agents/split.js";
 import type { AtomTagger } from "../application/ports/atom-tagger.js";
 import type { ClaimExtractor } from "../application/ports/claim-extractor.js";
 import type { FramingClassifier } from "../application/ports/framing-classifier.js";
 import type { IntegrityClassifier } from "../application/ports/integrity-classifier.js";
+import type { AtomizationOutput } from "../contracts/atomise.js";
 import { SourceEnvelope } from "../contracts/source.js";
 import { IntegrityDecision, canSplit, passesIntegrity } from "../domain/integrity.js";
 import { AssessedCandidate, CanonicalCandidate, type DiscoveredCandidate } from "./candidate.js";
@@ -30,8 +30,13 @@ export type ClaimExtractorPipelineDependencies = {
 
 export type ClaimExtractorPipelineOptions = {
   readonly ledgerPath?: string;
-  readonly integrityGate?: boolean;
 };
+
+const noPropositionsOutput = (): AtomizationOutput => ({
+  status: "no_propositions",
+  atoms: [],
+  candidateRejections: [],
+});
 
 export const createClaimExtractorAtomisationPipeline = (
   {
@@ -102,24 +107,14 @@ export const createClaimExtractorAtomisationPipeline = (
       return state.working.items.map((candidate) => ({ source: state.source, candidate }));
     },
     execute: async ({ source, candidate }, context): Promise<CandidateOutcome> => {
-      if (options.integrityGate !== true) {
-        return {
-          outcome: "accepted",
-          candidate,
-          accepted: { ...candidate, integrity: { ...candidate.integrity, gateBypassed: true } },
-          reason: "",
-          repair: null,
-        };
-      }
       if (passesIntegrity(candidate.integrity)) {
-        return { outcome: "accepted", candidate, accepted: candidate, reason: "", repair: null };
+        return { outcome: "accepted", candidate, accepted: candidate, reason: "" };
       }
       if (!canSplit(candidate.integrity)) {
         return {
           outcome: "rejected",
           candidate,
           reason: candidate.integrity.reason,
-          repair: null,
         };
       }
       const response = await context.run(splitAgent, candidate.claim);
@@ -128,7 +123,6 @@ export const createClaimExtractorAtomisationPipeline = (
           outcome: "rejected",
           candidate,
           reason: `${candidate.integrity.reason}; APS did not split the claim`,
-          repair: null,
         };
       }
       const children: CandidateResolution[] = [];
@@ -157,13 +151,11 @@ export const createClaimExtractorAtomisationPipeline = (
                 candidate: assessed,
                 accepted: assessed,
                 reason: "",
-                repair: null,
               }
             : {
                 outcome: "rejected",
                 candidate: assessed,
                 reason: assessed.integrity.reason,
-                repair: null,
               },
         );
       }

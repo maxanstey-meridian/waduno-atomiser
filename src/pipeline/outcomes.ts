@@ -1,31 +1,9 @@
 import { z } from "zod";
-import { IntegrityDecision } from "../domain/integrity.js";
-import {
-  AcceptedCandidate,
-  AssessedCandidate,
-  CanonicalCandidate,
-  DiscoveredCandidate,
-} from "./candidate.js";
-
-export const RepairAttempt = z.discriminatedUnion("outcome", [
-  z.strictObject({ outcome: z.literal("unchanged"), claim: CanonicalCandidate.shape.claim }),
-  z.strictObject({
-    outcome: z.literal("accepted"),
-    claim: CanonicalCandidate.shape.claim,
-    integrity: IntegrityDecision,
-  }),
-  z.strictObject({
-    outcome: z.literal("rejected"),
-    claim: CanonicalCandidate.shape.claim,
-    integrity: IntegrityDecision,
-  }),
-]);
-export type RepairAttempt = z.infer<typeof RepairAttempt>;
+import { AcceptedCandidate, AssessedCandidate, DiscoveredCandidate } from "./candidate.js";
 
 const AssessedOutcome = z.strictObject({
   candidate: AssessedCandidate,
   reason: z.string(),
-  repair: RepairAttempt.nullable(),
 });
 export const CandidateResolution = z.discriminatedUnion("outcome", [
   AssessedOutcome.extend({ outcome: z.literal("accepted"), accepted: AcceptedCandidate }),

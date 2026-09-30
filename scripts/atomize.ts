@@ -11,19 +11,13 @@ const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
     demo: { type: "boolean", default: false },
-    recovery: { type: "boolean" },
-    "no-recovery": { type: "boolean" },
   },
 });
 const [path] = positionals;
-if (!path || positionals.length !== 1 || (values.recovery && values["no-recovery"])) {
-  throw new Error("Usage: pnpm atomize <source.json> [--demo] [--recovery | --no-recovery]");
+if (!path || positionals.length !== 1) {
+  throw new Error("Usage: pnpm atomize <source.json> [--demo]");
 }
-const config = {
-  ...parseAtomiserEnv(),
-  ...(values.recovery ? { apsRecovery: true } : {}),
-  ...(values["no-recovery"] ? { apsRecovery: false } : {}),
-};
+const config = parseAtomiserEnv();
 const source = SourceEnvelope.parse(JSON.parse(await readFile(path, "utf8")));
 const width = process.stdout.columns ?? 100;
 if (values.demo) {

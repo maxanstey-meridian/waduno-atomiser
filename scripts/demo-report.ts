@@ -60,12 +60,11 @@ export const formatDemoResult = (state: AtomisationState, width = 100, color = f
   ];
   let produced = 0;
   const render = (entry: CandidateOutcome, label: string, prefix: string) => {
-    const repair = "repair" in entry ? entry.repair : null;
     const decision = entry.outcome === "duplicate" ? null : entry.candidate.integrity;
     const outcome = entry.outcome === "duplicate" ? "rejected" : entry.outcome;
     const outcomeColor =
       outcome === "accepted" ? "green" : outcome === "rejected" ? "red" : "yellow";
-    const status = `${repair === null ? "" : paint("yellow", "REPAIR → ")}${paint(["bold", outcomeColor], outcome.toUpperCase())}`;
+    const status = paint(["bold", outcomeColor], outcome.toUpperCase());
     lines.push(`\n${prefix}[${label}] ${status}`);
     const indent = prefix === "" ? "    " : prefix === "├─ " ? "│      " : "       ";
     lines.push(paragraph(`Proposition: ${entry.candidate.proposition}`, indent, width));
@@ -73,19 +72,6 @@ export const formatDemoResult = (state: AtomisationState, width = 100, color = f
       lines.push(paragraph(`Claim checked: ${entry.candidate.claim}`, indent, width));
     }
     lines.push(paragraph(scores(decision, paint), indent, width));
-    if (repair !== null) {
-      lines.push(paint("yellow", paragraph(`Repaired claim: ${repair.claim}`, indent, width)));
-      lines.push(
-        paragraph(
-          scores(repair.outcome === "unchanged" ? null : repair.integrity, paint),
-          indent,
-          width,
-        ),
-      );
-      if (repair.outcome !== "unchanged" && repair.integrity.reason) {
-        lines.push(paint("yellow", paragraph(repair.integrity.reason, indent, width)));
-      }
-    }
     if (entry.reason) {
       lines.push(paint(outcomeColor, paragraph(entry.reason, indent, width)));
     }

@@ -11,7 +11,7 @@ export type DiscoveredCandidate = z.infer<typeof DiscoveredCandidate>;
 export const CanonicalCandidate = DiscoveredCandidate.extend({
   claim: z.string().regex(/\S/u, "Candidate has no canonical claim."),
   parentProposition: z.string().min(1).optional(),
-  recovery: z.enum(["repaired", "split"]).optional(),
+  recovery: z.literal("split").optional(),
 });
 export type CanonicalCandidate = z.infer<typeof CanonicalCandidate>;
 
@@ -19,10 +19,7 @@ export const AssessedCandidate = CanonicalCandidate.extend({ integrity: Integrit
 export type AssessedCandidate = z.infer<typeof AssessedCandidate>;
 
 export const AcceptedCandidate = AssessedCandidate.extend({
-  integrity: IntegrityDecision.refine(
-    (decision) => decision.gateBypassed === true || passesIntegrity(decision),
-    "Accepted candidate failed integrity.",
-  ),
+  integrity: IntegrityDecision.refine(passesIntegrity, "Accepted candidate failed integrity."),
 });
 export type AcceptedCandidate = z.infer<typeof AcceptedCandidate>;
 

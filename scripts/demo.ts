@@ -14,10 +14,7 @@ import {
   readOpenRouterUsage,
 } from "./openrouter-spend.js";
 
-const config = {
-  ...parseAtomiserEnv(),
-  apsRecovery: true,
-};
+const config = parseAtomiserEnv();
 const address = parseExampleCorpusEnv();
 const { pipeline, ledgerPath, close } = await bootstrapAtomiser(config);
 const billing = new OpenRouter({
@@ -37,7 +34,7 @@ try {
       corpus.origin,
       AbortSignal.any([shutdown.signal, AbortSignal.timeout(10_000)]),
     );
-    console.log(`Loaded ${sources.length} sources from ${corpus.origin} · ${config.pipeline}`);
+    console.log(`Loaded ${sources.length} sources from ${corpus.origin}`);
     const firstUsage = await readOpenRouterUsage(billing, shutdown.signal);
     let previousUsage = firstUsage;
     try {
@@ -60,7 +57,7 @@ try {
         console.log(formatDemoResult(result.state, width, color));
         const { atomsPath, reportPath } = await saveDemoResult(
           result.state,
-          `.data/demo/${config.pipeline}`,
+          ".data/demo",
           measureOpenRouterSpend(before, previousUsage),
         );
         console.log(`\nAtoms saved to: ${atomsPath}\nReport saved to: ${reportPath}`);

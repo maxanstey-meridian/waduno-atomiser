@@ -34,7 +34,7 @@ const accepted: IntegrityDecision = {
   reason: "",
 };
 
-test("ClaimExtractor claims split through APS and reach Jev and GLiNER without Luna", async (t) => {
+test("ClaimExtractor claims split through APS and reach Jev and GLiNER", async (t) => {
   const aps = await chatServer(t, (request) => {
     const claim = request.messages.at(-1)?.content;
     if (claim === "The fox jumps and the dog sleeps.") {
@@ -44,48 +44,45 @@ test("ClaimExtractor claims split through APS and reach Jev and GLiNER without L
   });
   const checked: string[] = [];
   const tagged: string[] = [];
-  const graph = createClaimExtractorAtomisationPipeline(
-    {
-      extractClaims: async () => [
-        "The fox jumps and the dog sleeps.",
-        "The fox jumps and the dog sleeps.",
-      ],
-      apsClient: aps.client("aps"),
-      classifyIntegrity: async (_source, candidates) => {
-        checked.push(...candidates.map((candidate) => candidate.claim));
-        return candidates.map((candidate) =>
-          candidate.claim === "The fox jumps and the dog sleeps."
+  const graph = createClaimExtractorAtomisationPipeline({
+    extractClaims: async () => [
+      "The fox jumps and the dog sleeps.",
+      "The fox jumps and the dog sleeps.",
+    ],
+    apsClient: aps.client("aps"),
+    classifyIntegrity: async (_source, candidates) => {
+      checked.push(...candidates.map((candidate) => candidate.claim));
+      return candidates.map((candidate) =>
+        candidate.claim === "The fox jumps and the dog sleeps."
+          ? {
+              ...accepted,
+              atomic: false,
+              probabilities: { ...accepted.probabilities, atomic: 0.1 },
+              mean: 0.82,
+              reason: "compound",
+            }
+          : candidate.claim === "The dog sleeps."
             ? {
                 ...accepted,
-                atomic: false,
-                probabilities: { ...accepted.probabilities, atomic: 0.1 },
+                supported: false,
+                probabilities: { ...accepted.probabilities, supported: 0.1 },
                 mean: 0.82,
-                reason: "compound",
+                reason: "unsupported",
               }
-            : candidate.claim === "The dog sleeps."
-              ? {
-                  ...accepted,
-                  supported: false,
-                  probabilities: { ...accepted.probabilities, supported: 0.1 },
-                  mean: 0.82,
-                  reason: "unsupported",
-                }
-              : accepted,
-        );
-      },
-      classifyFraming: async (_source, claims) =>
-        claims.map(() => ({
-          world: { layer: "real_world" },
-          epistemic: { source_commitment: "asserted", modal_frame: "actual" },
-          temporal: { instability: "stable" },
-        })),
-      tag: async (_title, claims) => {
-        tagged.push(...claims);
-        return claims.map(() => []);
-      },
+            : accepted,
+      );
     },
-    { integrityGate: true },
-  );
+    classifyFraming: async (_source, claims) =>
+      claims.map(() => ({
+        world: { layer: "real_world" },
+        epistemic: { source_commitment: "asserted", modal_frame: "actual" },
+        temporal: { instability: "stable" },
+      })),
+    tag: async (_title, claims) => {
+      tagged.push(...claims);
+      return claims.map(() => []);
+    },
+  });
   const result = await run(graph, initialAtomisationState(source));
   assert.equal(result.succeeded, true, result.summary ?? "failed");
   assert.deepEqual(checked, [
@@ -126,7 +123,7 @@ test("an empty ClaimExtractor result completes without splitting or classifying"
   assert.equal(result.state.output?.status, "no_propositions");
 });
 
-test("ClaimExtractor defaults to retaining a rejected claim without splitting", async () => {
+test("a claim failing a check other than atomicity is rejected without splitting", async () => {
   const graph = createClaimExtractorAtomisationPipeline({
     extractClaims: async () => ["The fox jumps and the dog sleeps."],
     apsClient: {
@@ -137,21 +134,31 @@ test("ClaimExtractor defaults to retaining a rejected claim without splitting", 
       wireApi: "completions",
       verifyModel: false,
     },
-    classifyIntegrity: async () => [{ ...accepted, atomic: false, reason: "compound" }],
-    classifyFraming: async () => [
+    classifyIntegrity: async () => [
       {
-        world: { layer: "real_world" },
-        epistemic: { source_commitment: "asserted", modal_frame: "actual" },
-        temporal: { instability: "stable" },
+        ...accepted,
+        atomic: false,
+        standalone: false,
+        probabilities: { ...accepted.probabilities, atomic: 0.1, standalone: 0.2 },
+        mean: 0.66,
+        reason: "compound and not standalone",
       },
     ],
-    tag: async () => [[]],
+    classifyFraming: async (_source, claims) => {
+      assert.deepEqual(claims, []);
+      return [];
+    },
+    tag: async () => assert.fail("Unexpected GLiNER call"),
   });
   const result = await run(graph, initialAtomisationState(source));
   assert.equal(result.succeeded, true, result.summary ?? "failed");
+  assert.equal(result.state.output?.status, "no_valid_candidates");
+  assert.deepEqual(result.state.output?.atoms, []);
   assert.deepEqual(
-    result.state.output?.atoms.map((atom) => atom.claim),
-    ["The fox jumps and the dog sleeps."],
+    result.state.output?.candidateRejections.map((rejection) => [
+      rejection.stage,
+      rejection.reason,
+    ]),
+    [["integrity_validation", "compound and not standalone"]],
   );
-  assert.deepEqual(result.state.output?.candidateRejections, []);
 });

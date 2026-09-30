@@ -4,27 +4,30 @@ The corpus owns source selection, provenance, atom persistence, jobs and retries
 This package accepts a source-neutral envelope and returns one transformation.
 It has no corpus client or reverse callback. See README.md for setup and operation.
 
-Gemma-APS owns extraction and splitting. Send the selected text unchanged through
-its plain-user/raw-output interface; never add sentence segmentation. Source kind
-does not filter content. Deduplication removes exact proposition strings only.
+ClaimExtractor owns extraction; Gemma-APS owns splitting. Send the selected text
+unchanged to ClaimExtractor and a failing claim unchanged through APS's
+plain-user/raw-output interface; never add sentence segmentation. Source kind
+does not filter content. Deduplication removes exact claim strings only.
 
 All five independent Jev integrity checks must pass at 0.6. Standalone sees the
-claim alone; contextual operations receive bounded source context. Repair changes
-only the current claim, retains its original proposition and split-parent scope,
-and rejects unchanged output without another verdict. Recovery remains bounded.
+claim alone; contextual operations receive bounded source context. Only a claim
+that fails atomicity alone is split; its children are checked against their
+parent and rejected if they fail. There is no repair and no recursive splitting.
 
-Domain owns the acceptance threshold and recovery eligibility. Application ports
-own their narrow source-context inputs; the pipeline assembles public output.\nIts working phase carries discovered, canonicalised, assessed, accepted, framed\nor tagged candidate records, each carrying its own metadata. Operation folders\nkeep prompts, agents and small child graphs together.
+Domain owns the acceptance threshold and split eligibility. Application ports
+own their narrow source-context inputs; the pipeline assembles public output.
+Its working phase carries discovered, canonicalised, assessed, accepted, framed
+or tagged candidate records, each carrying its own metadata.
 All downstream stages require a nonblank canonical claim. Deduplication rejections
 use their own stage and omit scores; they never received an integrity verdict.
-Generation agents explicitly request reasoning effort `none`.
-Model roles are APS for discovery/splitting, Jev for integrity/framing, and the
-configurable LLM for all canonicalisation and repair. `LLM_*` configuration owns
-that shared generation client; GLiNER provides entity text, type and confidence separately.
-Canonicalisation and recovery use native Tandem concurrency, each bounded at six
-per source run. Recovery branches keep their child work serial and their results
-isolated. Branch-local child indices become source-wide identities only during
-the ordered merge. Candidate outcomes retain original assessments, repair attempts\nand nested split children; finalisation derives wire rejections from them.
+The APS split agent explicitly requests reasoning effort `none`.
+Model roles are ClaimExtractor for extraction, APS for splitting, and Jev for
+integrity/framing; GLiNER provides entity text, type and confidence separately.
+Claim resolution uses native Tandem concurrency, bounded at six per source run.
+Split branches keep their child work serial and their results isolated.
+Branch-local child indices become source-wide identities only during the ordered
+merge. Candidate outcomes retain original assessments and nested split children;
+finalisation derives wire rejections from them.
 
 Infrastructure and malformed-output failures fail the run. Never present them as
 empty extraction, negative model probabilities or successful fallback claims.
@@ -39,4 +42,4 @@ over HTTP. No global process matching, detached daemon or corpus import shortcut
 
 Live canaries are evidence for their labelled cases, not general calibration.
 Offline tests establish deterministic contracts, failure handling and execution
-boundaries; they do not establish model quality. Repairs can still be rejected.
+boundaries; they do not establish model quality. Split children can still be rejected.

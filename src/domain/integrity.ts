@@ -21,7 +21,6 @@ export const IntegrityDecision = IntegrityScores.extend({
   context_complete: z.boolean(),
   atomic: z.boolean(),
   reason: z.string(),
-  gateBypassed: z.literal(true).optional(),
 });
 export type IntegrityDecision = z.infer<typeof IntegrityDecision>;
 
@@ -80,11 +79,6 @@ export const passesIntegrity = (decision: IntegrityDecision): boolean =>
   decision.standalone &&
   decision.atomic &&
   decision.context_complete;
-
-export const canRepair = (decision: IntegrityDecision): boolean =>
-  decision.supported &&
-  decision.meaning_preserved &&
-  (!decision.standalone || !decision.context_complete);
 
 export const canSplit = (decision: IntegrityDecision): boolean =>
   decision.supported &&

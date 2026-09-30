@@ -5,7 +5,7 @@ import test from "node:test";
 import { parseAtomiserEnv } from "../src/config.js";
 import { SourceEnvelope } from "../src/contracts/source.js";
 import { createAtomiserServer } from "../src/interface/http/server.js";
-import { createLunaAtomisationPipeline } from "../src/pipeline/luna-atomisation-pipeline.js";
+import { createClaimExtractorAtomisationPipeline } from "../src/pipeline/claim-extractor-atomisation-pipeline.js";
 import { AtomisationState } from "../src/pipeline/state.js";
 import { chatServer } from "./helpers/chat-server.js";
 
@@ -19,41 +19,41 @@ const source = SourceEnvelope.parse(
 );
 
 test("HTTP validates input, extracts every source kind, and distinguishes empty and failed runs", async (t) => {
-  let discovery = "PROPOSITIONS:\n- The fox jumps.";
-  const server = await chatServer(t, (request) =>
-    request.model === "aps" ? discovery : JSON.stringify({ claim: "The fox jumps." }),
-  );
-  const pipeline = createLunaAtomisationPipeline(
-    {
-      apsClient: server.client("aps"),
-      llmClient: server.client("claim"),
-      tag: async (_title, claims) => claims.map(() => ["Fox"]),
-      classifyIntegrity: async (_source, candidates) =>
-        candidates.map(() => ({
-          supported: true,
-          meaning_preserved: true,
-          standalone: true,
-          context_complete: true,
-          atomic: true,
-          probabilities: {
-            supported: 1,
-            meaning_preserved: 1,
-            standalone: 1,
-            context_complete: 1,
-            atomic: 1,
-          },
-          mean: 1,
-          reason: "",
-        })),
-      classifyFraming: async (_source, claims) =>
-        claims.map(() => ({
-          world: { layer: "real_world" },
-          epistemic: { source_commitment: "asserted", modal_frame: "actual" },
-          temporal: { instability: "stable" },
-        })),
+  let extracted: readonly string[] | Error = ["The fox jumps."];
+  const server = await chatServer(t, () => assert.fail("Accepted claims must not be split"));
+  const pipeline = createClaimExtractorAtomisationPipeline({
+    extractClaims: async () => {
+      if (extracted instanceof Error) {
+        throw extracted;
+      }
+      return [...extracted];
     },
-    { recovery: false },
-  );
+    apsClient: server.client("aps"),
+    tag: async (_title, claims) => claims.map(() => ["Fox"]),
+    classifyIntegrity: async (_source, candidates) =>
+      candidates.map(() => ({
+        supported: true,
+        meaning_preserved: true,
+        standalone: true,
+        context_complete: true,
+        atomic: true,
+        probabilities: {
+          supported: 1,
+          meaning_preserved: 1,
+          standalone: 1,
+          context_complete: 1,
+          atomic: 1,
+        },
+        mean: 1,
+        reason: "",
+      })),
+    classifyFraming: async (_source, claims) =>
+      claims.map(() => ({
+        world: { layer: "real_world" },
+        epistemic: { source_commitment: "asserted", modal_frame: "actual" },
+        temporal: { instability: "stable" },
+      })),
+  });
   const { app } = createAtomiserServer(pipeline, {
     concurrency: 1,
     timeoutMs: 5000,
@@ -76,7 +76,7 @@ test("HTTP validates input, extracts every source kind, and distinguishes empty 
     assert.equal(response.json().atoms[0].claim, "The fox jumps.");
     assert.deepEqual(response.json().atoms[0].tags, ["Fox"]);
   }
-  discovery = "PROPOSITIONS:\n- The fox jumps.\n- The fox jumps.";
+  extracted = ["The fox jumps.", "The fox jumps."];
   const duplicates = await app.inject({ method: "POST", url: "/atomise", payload: source });
   assert.equal(duplicates.statusCode, 200, duplicates.body);
   assert.equal(duplicates.json().atoms.length, 1);
@@ -89,12 +89,12 @@ test("HTTP validates input, extracts every source kind, and distinguishes empty 
       reason: "duplicate of candidate 0",
     },
   ]);
-  discovery = "PROPOSITIONS:\n";
+  extracted = [];
   assert.equal(
     (await app.inject({ method: "POST", url: "/atomise", payload: source })).json().status,
     "no_propositions",
   );
-  discovery = "Sorry, the model is unavailable.";
+  extracted = new Error("ClaimExtractor is unavailable.");
   const failed = await app.inject({ method: "POST", url: "/atomise", payload: source });
   assert.equal(failed.statusCode, 502, failed.body);
   assert.equal(failed.json().code, "atomisation_failed");
@@ -103,27 +103,12 @@ test("HTTP validates input, extracts every source kind, and distinguishes empty 
 
 test("configuration permits unauthenticated APS and explicitly configured LAN HTTP", () => {
   const config = parseAtomiserEnv({
-    ATOMISER_PIPELINE: "luna",
     OPENROUTER_API_KEY: "test",
     APS_BASE_URL: "http://192.168.1.20:8092/v1",
   });
   assert.equal(config.apsApiKeyEnvironmentVariable, undefined);
   assert.equal(config.apsBaseUrl, "http://192.168.1.20:8092/v1");
   assert.equal("corpusBaseUrl" in config, false);
-  const localLlm = parseAtomiserEnv({
-    ATOMISER_PIPELINE: "luna",
-    OPENROUTER_API_KEY: "jev-key",
-    APS_API_KEY: "local-key",
-    LLM_BASE_URL: "http://127.0.0.1:8888/v1",
-    LLM_MODEL: "local-llm",
-    LLM_API_KEY_ENVIRONMENT_VARIABLE: "APS_API_KEY",
-    LLM_REQUEST_TIMEOUT_MILLISECONDS: "60000",
-  });
-  assert.equal(localLlm.llmBaseUrl, "http://127.0.0.1:8888/v1");
-  assert.equal(localLlm.llmModel, "local-llm");
-  assert.equal(localLlm.llmApiKeyEnvironmentVariable, "APS_API_KEY");
-  assert.equal(localLlm.llmRequestTimeoutMilliseconds, 60000);
-  assert.equal(localLlm.openRouterApiKey, "jev-key");
   assert.equal(
     parseAtomiserEnv({ OPENROUTER_API_KEY: "test", APS_API_KEY: "secret" })
       .apsApiKeyEnvironmentVariable,
@@ -134,25 +119,13 @@ test("configuration permits unauthenticated APS and explicitly configured LAN HT
   );
 });
 
-test("ClaimExtractor configuration does not require a Luna or local endpoint key", () => {
+test("configuration requires only the Jev key and defaults the ClaimExtractor model", () => {
   const config = parseAtomiserEnv({
     OPENROUTER_API_KEY: "jev-key",
   });
-  assert.equal(config.pipeline, "claim-extractor");
-  assert.equal(config.integrityGate, false);
+  assert.equal(config.openRouterApiKey, "jev-key");
   assert.equal(config.claimExtractorModel, "claim-extractor-4B-q-2605-oQ8-MTP");
-  assert.equal(
-    parseAtomiserEnv({ ATOMISER_PIPELINE: "luna", OPENROUTER_API_KEY: "jev-key" }).integrityGate,
-    true,
-  );
-  assert.equal(
-    parseAtomiserEnv({
-      ATOMISER_PIPELINE: "luna",
-      ATOMISER_INTEGRITY_GATE: "false",
-      OPENROUTER_API_KEY: "jev-key",
-    }).integrityGate,
-    false,
-  );
+  assert.throws(() => parseAtomiserEnv({}), /OPENROUTER_API_KEY is required/u);
 });
 
 test(

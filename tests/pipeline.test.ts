@@ -8,8 +8,6 @@ import {
   type Stage,
   type Collection,
   type ChatClient,
-  type TaskAgent,
-  collection,
 } from "@maxanstey-meridian/tandem";
 import assert from "node:assert/strict";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
@@ -18,21 +16,17 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { stripVTControlCharacters } from "node:util";
-import { z } from "zod";
 import { formatDemoResult, saveDemoResult } from "../scripts/demo-report.js";
 import { measureOpenRouterSpend } from "../scripts/openrouter-spend.js";
-import { createRepairAgent } from "../src/agents/repair.js";
-import { createSplitAgent } from "../src/agents/split.js";
 import type { IntegrityClassifier } from "../src/application/ports/integrity-classifier.js";
 import { CandidateRejection } from "../src/contracts/atomise.js";
 import { SourceEnvelope } from "../src/contracts/source.js";
 import type { IntegrityDecision } from "../src/domain/integrity.js";
+import {
+  createClaimExtractorAtomisationPipeline,
+  type ClaimExtractorPipelineDependencies,
+} from "../src/pipeline/claim-extractor-atomisation-pipeline.js";
 import { candidateRejections } from "../src/pipeline/finalize.js";
-import { createLunaAtomisationPipeline } from "../src/pipeline/luna-atomisation-pipeline.js";
-import type {
-  LunaPipelineDependencies,
-  LunaPipelineOptions,
-} from "../src/pipeline/luna-atomisation-pipeline.js";
 import { AtomisationState, initialAtomisationState } from "../src/pipeline/state.js";
 import { chatServer } from "./helpers/chat-server.js";
 
@@ -61,6 +55,11 @@ const decision = (overrides: Partial<IntegrityDecision> = {}): IntegrityDecision
   reason: "",
   ...overrides,
 });
+const stable = {
+  world: { layer: "real_world" },
+  epistemic: { source_commitment: "asserted", modal_frame: "actual" },
+  temporal: { instability: "stable" },
+} as const;
 
 const oneStage = (
   node: Stage<AtomisationState> | Collection<AtomisationState>,
@@ -88,54 +87,38 @@ const unusedClient: ChatClient = {
 };
 const nodeFromPipeline = (
   id: string,
-  dependencies: Partial<LunaPipelineDependencies> = {},
-  options: LunaPipelineOptions = {},
+  dependencies: Partial<ClaimExtractorPipelineDependencies> = {},
+  ledgerPath?: string,
 ): Stage<AtomisationState> | Collection<AtomisationState> => {
-  const graph = createLunaAtomisationPipeline(
+  const graph = createClaimExtractorAtomisationPipeline(
     {
+      extractClaims: async () => assert.fail("Unexpected extraction call"),
       apsClient: unusedClient,
-      llmClient: unusedClient,
       classifyIntegrity: async () => assert.fail("Unexpected integrity call"),
       classifyFraming: async () => assert.fail("Unexpected framing call"),
       tag: async () => assert.fail("Unexpected tagging call"),
       ...dependencies,
     },
-    options,
+    { ledgerPath },
   );
   const node = graph.nodes.find((node) => node.id === id);
   assert(node?.kind === "stage" || node?.kind === "collection");
   return node;
 };
-const recoveryNode = (dependencies: Partial<LunaPipelineDependencies>, ledgerPath?: string) =>
-  nodeFromPipeline("recovery", dependencies, { ledgerPath });
+const resolveNode = (
+  dependencies: Partial<ClaimExtractorPipelineDependencies>,
+  ledgerPath?: string,
+) => nodeFromPipeline("resolve-claims", dependencies, ledgerPath);
 
-const runTask = async <I, O>(agent: TaskAgent<I, O>, input: I): Promise<O> => {
-  const State = z.object({ value: agent.result.nullable() });
-  const work = collection({
-    id: "work",
-    item: agent.input,
-    result: agent.result,
-    max: 1,
-    agents: [agent],
-    items: (_state: z.infer<typeof State>) => [input],
-    execute: (item, context) => context.run(agent, item),
-    apply: (_state, results) => ({ value: results[0]! }),
-  });
-  const done = output<z.infer<typeof State>>({ id: "done", summary: () => "done" });
-  const result = await run(
-    pipeline({
-      name: "agent-test",
-      state: State,
-      start: work,
-      nodes: [work, done],
-      routes: [route({ from: work, to: done, label: "done" })],
-      outputs: [done],
-    }),
-    { value: null },
-  );
-  assert.notEqual(result.state.value, null);
-  return result.state.value!;
-};
+const assessed = (
+  items: readonly { readonly claim: string; readonly integrity: IntegrityDecision }[],
+) =>
+  items.map(({ claim, integrity }, discoveryIndex) => ({
+    discoveryIndex,
+    proposition: claim,
+    claim,
+    integrity,
+  }));
 
 const gate = () => {
   let resolve = () => {};
@@ -146,49 +129,39 @@ const gate = () => {
 };
 
 test(
-  "one native graph isolates concurrent sources and persists all agent visits in each source run",
+  "one native graph isolates concurrent sources and persists each source run",
   { timeout: 60000 },
   async (t) => {
     const directory = mkdtempSync(join(tmpdir(), "atomiser-ledger-"));
     t.after(() => rmSync(directory, { recursive: true, force: true }));
     const ledgerPath = join(directory, "runs.sqlite3");
     const server = await chatServer(t, (request) => {
-      if (request.model === "aps-test") {
-        return `PROPOSITIONS:\n${Array.from({ length: 8 }, (_, index) => `- Fact ${index}.`).join("\n")}`;
-      }
-      const message = request.messages.find((message) =>
-        message.content.includes("PROPOSITION\n"),
-      )!.content;
-      const title = message.includes("Alpha") ? "Alpha" : "Beta";
-      const fact = message.match(/Fact \d+\./u)![0];
-      return JSON.stringify({ claim: `${title}: ${fact}` });
+      const claim = request.messages.at(-1)!.content;
+      const title = claim.split(":")[0];
+      return `PROPOSITIONS:\n- ${title}: Fact 6.\n- ${title}: Fact 7.`;
     });
-    const graph = createLunaAtomisationPipeline(
+    const graph = createClaimExtractorAtomisationPipeline(
       {
+        extractClaims: async (extractSource) => [
+          ...Array.from({ length: 6 }, (_, index) => `${extractSource.title}: Fact ${index}.`),
+          `${extractSource.title}: Fact 6 and Fact 7.`,
+        ],
         tag: async (title, claims) => claims.map((claim) => [title, claim]),
         apsClient: server.client("aps-test"),
-        llmClient: server.client("claim-test"),
-        classifyIntegrity: async (_source, candidates) => candidates.map(() => decision()),
-        classifyFraming: async (_source, claims) =>
-          claims.map(() => ({
-            world: { layer: "real_world" },
-            epistemic: { source_commitment: "asserted", modal_frame: "actual" },
-            temporal: { instability: "stable" },
-          })),
+        classifyIntegrity: async (_source, candidates) =>
+          candidates.map((candidate) =>
+            decision(
+              candidate.claim.includes(" and ") ? { atomic: false, reason: "compound" } : {},
+            ),
+          ),
+        classifyFraming: async (_source, claims) => claims.map(() => stable),
       },
-      { recovery: false, ledgerPath },
+      { ledgerPath },
     );
     assert.equal("atomize" in graph, false);
-    assert.equal(graph.nodes.find((node) => node.id === "aps-discovery")?.kind, "agent");
     const results = await Promise.all(
       ["Alpha", "Beta"].map(async (title) => {
-        const input = {
-          ...initialAtomisationState({
-            ...source,
-            title,
-          }),
-        };
-        const result = await run(graph, input, {
+        const result = await run(graph, initialAtomisationState({ ...source, title }), {
           signal: AbortSignal.timeout(45000),
           ledgerPath,
         });
@@ -202,9 +175,12 @@ test(
           result.state.output?.atoms.map((atom) => atom.claim),
           Array.from({ length: 8 }, (_, index) => `${title}: Fact ${index}.`),
         );
+        assert.deepEqual(
+          result.state.output?.atoms.map((atom) => atom.recovery),
+          [...Array.from({ length: 6 }, () => undefined), "split", "split"],
+        );
         assert.equal("childRunIds" in result.state, false);
         assert.equal("internalCalls" in result.state, false);
-        assert.ok((await inspectAccepted({ ledgerPath, runId: result.runId })).length > 0);
         return result;
       }),
     );
@@ -224,7 +200,7 @@ test(
       assert.deepEqual(report.source, state.source);
       assert.deepEqual(report.outcomes, state.outcomes);
       assert.deepEqual(report.openRouterSpend, spend);
-      assert.equal(report.outcomes.length, 8);
+      assert.equal(report.outcomes.length, 7);
       assert.deepEqual(report.candidates, state.working.items);
       assert.match(formatDemoResult(state), /OUTPUT · 8 atoms/u);
       for (const width of [40, 100]) {
@@ -240,27 +216,26 @@ test(
         ),
       );
     }
-    assert.equal(server.requests.length, 18);
+    assert.equal(server.requests.length, 2);
     const database = new DatabaseSync(ledgerPath, { readOnly: true });
     const recordedRuns = database.prepare("SELECT run_id FROM runs").all();
     database.close();
     assert.equal(recordedRuns.length, 2);
     for (const record of recordedRuns) {
-      const runId = String(record.run_id);
-      const accepted = await inspectAccepted({ ledgerPath, runId });
-      assert.equal(accepted.filter((value) => value.kind === "StructuredOutputAccepted").length, 9);
-      assert(accepted.some((value) => value.stepId === "canonicalise/canonicalize-one"));
+      const accepted = await inspectAccepted({ ledgerPath, runId: String(record.run_id) });
+      assert.equal(accepted.filter((value) => value.kind === "StructuredOutputAccepted").length, 1);
     }
   },
 );
 
-test("dedupe reports the original discovery index after earlier duplicates were removed", async () => {
+test("dedupe reports the original extraction index after earlier duplicates were removed", async () => {
   const input = {
     ...initialAtomisationState(source),
     working: {
-      phase: "discovered",
-      items: ["First.", "First.", "Second.", "Second."].map((proposition, discoveryIndex) => ({
-        proposition,
+      phase: "canonicalised",
+      items: ["First.", "First.", "Second.", "Second."].map((claim, discoveryIndex) => ({
+        proposition: claim,
+        claim,
         discoveryIndex,
       })),
     },
@@ -288,265 +263,176 @@ test("dedupe reports the original discovery index after earlier duplicates were 
   }
 });
 
-test(
-  "native max refills canonicalisation slots and preserves input order",
-  { timeout: 10000 },
-  async (t) => {
-    const started = Array.from({ length: 9 }, gate);
-    const finish = new Map<number, () => void>();
-    let entered = 0,
-      active = 0,
-      peak = 0;
-    const server = await chatServer(
-      t,
-      (request) =>
-        new Promise<string>((resolve) => {
-          const message = request.messages.find((message) => message.role === "user")!.content;
-          const index = Number(message.split("PROPOSITION\n")[1]);
-          active++;
-          peak = Math.max(peak, active);
-          finish.set(index, () => {
-            finish.delete(index);
-            active--;
-            resolve(JSON.stringify({ claim: `claim ${index}` }));
-          });
-          started[++entered]!.resolve();
-        }),
-    );
-    const graph = oneStage(nodeFromPipeline("canonicalise", { llmClient: server.client("claim") }));
-    const running = run(
-      graph,
-      {
-        ...initialAtomisationState(source),
-        working: {
-          phase: "discovered",
-          items: Array.from({ length: 8 }, (_, discoveryIndex) => ({
-            discoveryIndex,
-            proposition: String(discoveryIndex),
-          })),
-        },
-      },
-      { signal: AbortSignal.timeout(8000) },
-    );
-    void running.catch(() => {});
-    await started[6]!.promise;
-    assert.equal(active, 6);
-    const [held, released] = [...finish.keys()];
-    finish.get(released!)!();
-    await started[7]!.promise;
-    assert(finish.has(held!));
-    assert.equal(active, 6);
-    for (const complete of finish.values()) {
-      complete();
-    }
-    await started[8]!.promise;
-    for (const complete of finish.values()) {
-      complete();
-    }
-    const result = await running;
-    assert.equal(peak, 6);
-    assert.equal(result.state.working.phase, "canonicalised");
-    if (result.state.working.phase !== "canonicalised") {
-      assert.fail("Wrong phase");
-    }
-    assert.deepEqual(
-      result.state.working.items.map((candidate) => candidate.claim),
-      Array.from({ length: 8 }, (_, index) => `claim ${index}`),
-    );
-  },
-);
-
-test("canonicalisation fails rather than substituting a proposition for invalid model output", async (t) => {
-  const server = await chatServer(t, () => JSON.stringify({ claim: "" }));
-  await assert.rejects(
-    run(oneStage(nodeFromPipeline("canonicalise", { llmClient: server.client("claim") })), {
-      ...initialAtomisationState(source),
-      working: {
-        phase: "discovered",
-        items: [{ discoveryIndex: 0, proposition: "Keep this fact." }],
-      },
-    }),
+test("dedupe preserves signs, decimal points, case and punctuation while removing exact copies", async () => {
+  const claims = [
+    "It was -5°C.",
+    "It was +5°C.",
+    "US won.",
+    "us won.",
+    "It was 0.2.",
+    "It was 02.",
+    "US won.",
+  ];
+  const result = await run(oneStage(nodeFromPipeline("dedupe")), {
+    ...initialAtomisationState(source),
+    working: {
+      phase: "canonicalised",
+      items: claims.map((claim, discoveryIndex) => ({
+        proposition: claim,
+        claim,
+        discoveryIndex,
+      })),
+    },
+  });
+  assert.deepEqual(
+    result.state.working.items.map((candidate) => candidate.proposition),
+    claims.slice(0, -1),
+  );
+  assert.equal(
+    candidateRejections(result.state.outcomes, result.state.source)[0]?.candidateIndex,
+    6,
   );
 });
 
-test(
-  "the source signal cancels an active canonicalisation agent",
-  { timeout: 10000 },
-  async (t) => {
-    const started = gate();
-    const server = await chatServer(t, () => {
-      started.resolve();
-      return new Promise<string>(() => {});
-    });
-    const controller = new AbortController();
-    const running = run(
-      oneStage(nodeFromPipeline("canonicalise", { llmClient: server.client("claim") })),
-      {
-        ...initialAtomisationState(source),
-        working: { phase: "discovered", items: [{ discoveryIndex: 0, proposition: "Wait." }] },
-      },
-      { signal: controller.signal },
-    );
-    const rejected = assert.rejects(running, /abort|cancel/i);
-    await started.promise;
-    controller.abort();
-    await rejected;
-  },
-);
+test("extraction receives the bounded source and APS receives the failing claim verbatim", async (t) => {
+  const text = "Mr. Burns paid $3 million.\nSenna won by 0.2 seconds. 🦉";
+  const context = { sectionPath: ["1992", "Race"], leadIn: "The driver was Ayrton Senna." };
+  const compound = "Ayrton Senna won by 0.2 seconds and Mr. Burns paid $3 million.";
+  const server = await chatServer(t, (request) => {
+    assert.equal(request.reasoning_effort, "none");
+    assert.deepEqual(request.messages, [{ role: "user", content: compound }]);
+    assert.equal(request.response_format, undefined);
+    assert.equal(request.reasoning, undefined);
+    return "PROPOSITIONS:\n- Ayrton Senna won by 0.2 seconds.\n- Mr. Burns paid $3 million.";
+  });
+  const bounded = { ...source, text, context };
+  const graph = createClaimExtractorAtomisationPipeline({
+    extractClaims: async (extractSource) => {
+      assert.deepEqual(extractSource, bounded);
+      return [compound];
+    },
+    apsClient: server.client("aps"),
+    classifyIntegrity: async (integritySource, candidates) => {
+      assert.deepEqual(integritySource.context, context);
+      return candidates.map((candidate) =>
+        decision(candidate.claim === compound ? { atomic: false, reason: "compound" } : {}),
+      );
+    },
+    classifyFraming: async (framingSource, claims) => {
+      assert.deepEqual(framingSource.context, context);
+      assert.deepEqual(claims, ["Ayrton Senna won by 0.2 seconds.", "Mr. Burns paid $3 million."]);
+      return claims.map(() => stable);
+    },
+    tag: async (_title, claims) => claims.map(() => []),
+  });
+  const result = await run(graph, initialAtomisationState(bounded));
+  assert.equal(result.succeeded, true, result.summary ?? "failed");
+  assert.equal(server.requests.length, 1);
+});
 
-test("no-recovery filters candidates and decisions together without adding child runs", async () => {
-  const input = {
+test("resolution accepts passing claims and rejects unsplittable failures without APS", async () => {
+  const result = await run(oneStage(resolveNode({})), {
     ...initialAtomisationState(source),
     working: {
       phase: "assessed",
-      items: [
-        { proposition: "Accept.", integrity: decision() },
-        { proposition: "Reject.", integrity: decision({ atomic: false, reason: "compound" }) },
-      ].map(({ proposition, integrity }, discoveryIndex) => ({
-        proposition,
-        claim: proposition,
-        discoveryIndex,
-        integrity,
-      })),
+      items: assessed([
+        { claim: "Accept.", integrity: decision() },
+        { claim: "Unsupported.", integrity: decision({ supported: false, reason: "unsupported" }) },
+        {
+          claim: "The dog is lazy.",
+          integrity: decision({
+            meaning_preserved: false,
+            standalone: false,
+            atomic: false,
+            reason: "meaning_changed",
+          }),
+        },
+      ]),
     },
-  };
-  const result = await run(oneStage(nodeFromPipeline("recovery", {}, { recovery: false })), input);
+  });
+  assert.equal(result.succeeded, true, result.summary ?? "failed");
   assert.deepEqual(
     result.state.working.items.map((candidate) => candidate.proposition),
     ["Accept."],
   );
-  assert.equal(result.state.working.items.length, 1);
-  assert.equal(
-    candidateRejections(result.state.outcomes, result.state.source)[0]?.reason,
-    "compound",
-  );
-});
-
-test("disabled integrity gate keeps Luna candidates regardless of Jev decision", async () => {
-  const input = {
-    ...initialAtomisationState(source),
-    working: {
-      phase: "assessed",
-      items: [
-        {
-          discoveryIndex: 0,
-          proposition: "The fox jumps and the dog sleeps.",
-          claim: "The fox jumps and the dog sleeps.",
-          integrity: decision({ atomic: false, reason: "compound" }),
-        },
-      ],
-    },
-  };
-  const result = await run(
-    oneStage(nodeFromPipeline("recovery", {}, { integrityGate: false })),
-    input,
-  );
   assert.deepEqual(
-    result.state.working.items.map((candidate) => candidate.proposition),
-    ["The fox jumps and the dog sleeps."],
+    candidateRejections(result.state.outcomes, result.state.source).map(
+      (rejection) => rejection.reason,
+    ),
+    ["unsupported", "meaning_changed"],
   );
-  assert.deepEqual(candidateRejections(result.state.outcomes, result.state.source), []);
 });
 
 test(
-  "recovery rechecks repairs, bounds splitting and assigns unique child indices",
+  "resolution splits atomicity failures, rechecks every child and assigns unique child indices",
   { timeout: 60000 },
   async (t) => {
-    const server = await chatServer(t, (request) => {
-      const message = request.messages.map((message) => message.content).join("\n");
-      if (request.model === "split-test") {
-        return message.includes("Compound A")
-          ? "PROPOSITIONS:\n- Child good.\n- Child unresolved.\n- Child compound."
-          : "PROPOSITIONS:\n- Child later.";
-      }
-      if (
-        request.messages.some(
-          (message) => message.role === "system" && message.content.startsWith("Revise"),
-        )
-      ) {
-        return JSON.stringify({
-          claim: message.includes("Repair fails") ? "Still invalid." : "Repaired fact.",
-        });
-      }
-      return JSON.stringify({ claim: "Canonical child." });
-    });
+    const server = await chatServer(t, (request) =>
+      request.messages.at(-1)!.content === "Compound A."
+        ? "PROPOSITIONS:\n- Child good.\n- Child unsupported.\n- Child compound."
+        : "PROPOSITIONS:\n- Child later.",
+    );
     const checks: string[] = [];
     const classify: IntegrityClassifier = async (_source, candidates) =>
       candidates.map((candidate) => {
-        checks.push(candidate.proposition);
-        if (candidate.proposition === "Child unresolved." && candidate.claim !== "Repaired fact.") {
-          assert.equal(candidate.parentProposition, "Compound A.");
-          return decision({ standalone: false });
+        checks.push(candidate.claim);
+        assert.equal(candidate.parentProposition, "Compound A.");
+        if (candidate.claim === "Child unsupported.") {
+          return decision({ supported: false, reason: "unsupported child" });
         }
-        if (candidate.claim === "Repaired fact.") {
-          assert.equal(candidate.proposition, "Child unresolved.");
-          assert.equal(candidate.parentProposition, "Compound A.");
-        }
-        if (candidate.proposition === "Child compound.") {
-          return decision({ atomic: false });
-        }
-        if (candidate.claim === "Still invalid.") {
-          return decision({ meaning_preserved: false });
+        if (candidate.claim === "Child compound.") {
+          return decision({ atomic: false, reason: "compound child" });
         }
         return decision();
       });
-    const graph = oneStage(
-      recoveryNode({
-        classifyIntegrity: classify,
-        apsClient: server.client("split-test"),
-        llmClient: server.client("claim-test"),
-      }),
-    );
-    const input = {
-      ...initialAtomisationState(source),
-      working: {
-        phase: "assessed",
-        items: [
-          { proposition: "Accepted.", integrity: decision() },
-          { proposition: "Unsupported.", integrity: decision({ supported: false }) },
-          {
-            proposition: "Repair fails.",
-            integrity: decision({ standalone: false, atomic: false }),
-          },
-          { proposition: "Compound A.", integrity: decision({ atomic: false }) },
-          { proposition: "Compound B.", integrity: decision({ atomic: false }) },
-        ].map(({ proposition, integrity }, discoveryIndex) => ({
-          proposition,
-          claim: proposition,
-          discoveryIndex,
-          integrity,
-        })),
-      },
-      outcomes: [
-        {
-          outcome: "duplicate",
-          candidate: { discoveryIndex: 9, proposition: "Earlier duplicate." },
-          reason: "duplicate",
+    const result = await run(
+      oneStage(resolveNode({ classifyIntegrity: classify, apsClient: server.client("aps") })),
+      {
+        ...initialAtomisationState(source),
+        working: {
+          phase: "assessed",
+          items: assessed([
+            { claim: "Accepted.", integrity: decision() },
+            { claim: "Unsupported.", integrity: decision({ supported: false, reason: "no" }) },
+            { claim: "Compound A.", integrity: decision({ atomic: false, reason: "compound" }) },
+            { claim: "Compound B.", integrity: decision({ atomic: false, reason: "compound" }) },
+          ]),
         },
-      ],
-    };
-    const result = await run(graph, input, { signal: AbortSignal.timeout(45000) });
+        outcomes: [
+          {
+            outcome: "duplicate",
+            candidate: { discoveryIndex: 9, proposition: "Earlier duplicate." },
+            reason: "duplicate",
+          },
+        ],
+      },
+      { signal: AbortSignal.timeout(45000) },
+    );
     assert.equal(result.succeeded, true, result.summary ?? "failed");
-    assert.deepEqual(
-      result.state.working.items.map((candidate) => candidate.proposition),
-      ["Accepted.", "Child good.", "Child unresolved.", "Child later."],
-    );
-    assert.deepEqual(
-      result.state.working.items.map((candidate) => candidate.discoveryIndex),
-      [0, 10, 11, 13],
-    );
-    assert.equal(result.state.working.items.length, 4);
     assert.ok(result.state.working.phase === "accepted");
-    assert.equal(result.state.working.items[2]?.claim, "Repaired fact.");
     assert.deepEqual(
-      candidateRejections(result.state.outcomes, result.state.source).map(
-        (rejection) => rejection.proposition,
-      ),
-      ["Earlier duplicate.", "Unsupported.", "Repair fails.", "Child compound."],
+      result.state.working.items.map((candidate) => [candidate.claim, candidate.discoveryIndex]),
+      [
+        ["Accepted.", 0],
+        ["Child good.", 10],
+      ],
     );
-    assert.equal(checks.includes("Unsupported."), false);
-    assert.equal(server.requests.filter((request) => request.model === "split-test").length, 2);
-    assert.equal(server.requests.length, 8);
+    assert.equal(result.state.working.items[1]?.recovery, "split");
+    assert.deepEqual(checks, ["Child good.", "Child unsupported.", "Child compound."]);
+    assert.deepEqual(
+      candidateRejections(result.state.outcomes, result.state.source).map((rejection) => [
+        rejection.proposition,
+        rejection.reason,
+      ]),
+      [
+        ["Earlier duplicate.", "duplicate"],
+        ["Unsupported.", "no"],
+        ["Child unsupported.", "unsupported child"],
+        ["Child compound.", "compound child"],
+        ["Compound B.", "compound; APS did not split the claim"],
+      ],
+    );
+    assert.equal(server.requests.length, 2);
     const indices = [
       ...result.state.working.items.map((candidate) => candidate.discoveryIndex),
       ...candidateRejections(result.state.outcomes, result.state.source).map(
@@ -554,197 +440,50 @@ test(
       ),
     ];
     assert.equal(new Set(indices).size, indices.length);
-    const parent = result.state.outcomes.find((entry) => entry.candidate.discoveryIndex === 3);
+    const parent = result.state.outcomes.find((entry) => entry.candidate.discoveryIndex === 2);
     assert.equal(parent?.outcome, "split");
-    assert.equal(parent.candidate.integrity.atomic, false);
-    const children = parent.children;
     assert.deepEqual(
-      children.map((entry) => entry.candidate.proposition),
-      ["Child good.", "Child unresolved.", "Child compound."],
+      parent.children.map((entry) => entry.outcome),
+      ["accepted", "rejected", "rejected"],
     );
-    assert.deepEqual(
-      children.map((entry) => entry.outcome),
-      ["accepted", "accepted", "rejected"],
-    );
-    assert.equal(children[1]?.candidate.integrity.standalone, false);
-    assert.equal(children[1]?.repair?.claim, "Repaired fact.");
-    assert.ok(children[1]?.repair?.outcome === "accepted");
-    assert.equal(children[1].repair.integrity.standalone, true);
-    const failedRepair = result.state.outcomes.find(
-      (entry) => entry.candidate.discoveryIndex === 2,
-    );
-    assert.ok(failedRepair?.outcome === "rejected");
-    assert.equal(failedRepair.repair?.claim, "Still invalid.");
-    assert.ok(failedRepair.repair?.outcome === "rejected");
-    assert.equal(failedRepair.repair.integrity.meaning_preserved, false);
     const rendered = formatDemoResult(result.state);
-    assert.match(rendered, /\[4\] SPLIT/u);
-    assert.match(rendered, /├─ \[4\.1\] ACCEPTED/u);
-    assert.match(rendered, /├─ \[4\.2\] REPAIR → ACCEPTED/u);
-    assert.match(rendered, /└─ \[4\.3\] REJECTED/u);
+    assert.match(rendered, /\[3\] SPLIT/u);
+    assert.match(rendered, /├─ \[3\.1\] ACCEPTED/u);
+    assert.match(rendered, /├─ \[3\.2\] REJECTED/u);
+    assert.match(rendered, /└─ \[3\.3\] REJECTED/u);
   },
 );
 
-test(
-  "unchanged repairs cannot obtain a second favourable integrity verdict",
-  { timeout: 30000 },
-  async (t) => {
-    const original = "It jumps over the dog.";
-    const checkedClaim = "The fox jumps over it.";
-    const server = await chatServer(t, (request) => {
-      const message = request.messages.find((message) => message.role === "user")!;
-      const input = z
-        .object({
-          proposition: z.string(),
-          claim: z.string(),
-          source: z.object({ title: z.string(), text: z.string() }),
-        })
-        .parse(JSON.parse(message.content));
-      assert.equal(input.proposition, original);
-      assert.equal(input.claim, checkedClaim);
-      assert.equal(input.source.text, source.text);
-      return JSON.stringify({ claim: `  ${checkedClaim}  ` });
+test("APS failures and malformed split output fail resolution", async (t) => {
+  for (const response of ["unavailable", "Sorry, I cannot split that."]) {
+    const server = await chatServer(t, () => {
+      if (response === "unavailable") {
+        throw new Error("provider unavailable");
+      }
+      return response;
     });
-    const classify: IntegrityClassifier = async () => {
-      assert.fail("An unchanged repair must not be reclassified");
-    };
-    const graph = oneStage(
-      recoveryNode({
-        classifyIntegrity: classify,
-        apsClient: server.client("split-test"),
-        llmClient: server.client("claim-test"),
-      }),
-    );
-    const result = await run(
-      graph,
-      {
-        ...initialAtomisationState(source),
-        working: {
-          phase: "assessed",
-          items: [
-            {
-              discoveryIndex: 0,
-              proposition: original,
-              claim: checkedClaim,
-              integrity: decision({ standalone: false, reason: "unresolved" }),
-            },
-          ],
+    await assert.rejects(
+      run(
+        oneStage(
+          resolveNode({
+            classifyIntegrity: async () =>
+              assert.fail("Failed splits must not reach classification"),
+            apsClient: server.client("aps"),
+          }),
+        ),
+        {
+          ...initialAtomisationState(source),
+          working: {
+            phase: "assessed",
+            items: assessed([
+              { claim: "A compound fact.", integrity: decision({ atomic: false }) },
+            ]),
+          },
         },
-      },
-      { signal: AbortSignal.timeout(20000) },
-    );
-    assert.equal(result.succeeded, true, result.summary ?? "failed");
-    assert.equal(server.requests.length, 1);
-    assert.equal(result.state.working.items.length, 0);
-    const outcome = result.state.outcomes[0];
-    assert.ok(outcome?.outcome === "rejected");
-    assert.equal(outcome.repair?.claim, checkedClaim);
-    assert.equal(outcome.repair?.outcome, "unchanged");
-    assert.match(
-      candidateRejections(result.state.outcomes, result.state.source)[0]!.reason,
-      /repair unchanged/u,
-    );
-  },
-);
-
-test("context-only failures trigger repair and must pass context revalidation", async (t) => {
-  const original = "Ayrton Senna won by 0.2 seconds.";
-  const repaired = "Ayrton Senna won the 1992 Monaco Grand Prix by 0.2 seconds.";
-  const boundedSource = {
-    ...source,
-    title: "1992 Monaco Grand Prix",
-    text: repaired,
-    passages: [
-      {
-        passageId: "race",
-        blockId: "race",
-        text: repaired,
-      },
-    ],
-  };
-  const server = await chatServer(t, () => JSON.stringify({ claim: repaired }));
-  for (const complete of [true, false]) {
-    const classify: IntegrityClassifier = async (_source, candidates) => {
-      assert.equal(candidates[0]?.proposition, original);
-      assert.equal(candidates[0]?.claim, repaired);
-      return [decision({ context_complete: complete })];
-    };
-    const graph = oneStage(
-      recoveryNode({
-        classifyIntegrity: classify,
-        apsClient: server.client("split-test"),
-        llmClient: server.client("claim-test"),
-      }),
-    );
-    const result = await run(
-      graph,
-      {
-        ...initialAtomisationState(boundedSource),
-        working: {
-          phase: "assessed",
-          items: [
-            {
-              discoveryIndex: 0,
-              proposition: original,
-              claim: original,
-              integrity: decision({ context_complete: false, reason: "context_incomplete" }),
-            },
-          ],
-        },
-      },
-      { signal: AbortSignal.timeout(20000) },
-    );
-    assert.equal(result.succeeded, true, result.summary ?? "failed");
-    assert.equal(result.state.working.items.length, complete ? 1 : 0);
-    const outcome = result.state.outcomes[0];
-    assert.ok(outcome?.outcome === "accepted" || outcome?.outcome === "rejected");
-    assert.ok(outcome.repair?.outcome === "accepted" || outcome.repair?.outcome === "rejected");
-    assert.equal(outcome.repair.integrity.context_complete, complete);
-    assert.equal(
-      candidateRejections(result.state.outcomes, result.state.source).length,
-      complete ? 0 : 1,
+        { signal: AbortSignal.timeout(15000) },
+      ),
     );
   }
-  assert.equal(server.requests.length, 2);
-});
-
-test("a source-supported change of meaning is rejected without repair or split", async (t) => {
-  const server = await chatServer(t, () =>
-    assert.fail("A changed meaning must not reach recovery models"),
-  );
-  const graph = oneStage(
-    recoveryNode({
-      classifyIntegrity: async () => assert.fail("A changed meaning must not be reclassified"),
-      apsClient: server.client("split-test"),
-      llmClient: server.client("claim-test"),
-    }),
-  );
-  const failed = decision({
-    meaning_preserved: false,
-    standalone: false,
-    atomic: false,
-    reason: "meaning_changed",
-  });
-  const result = await run(graph, {
-    ...initialAtomisationState(source),
-    working: {
-      phase: "assessed",
-      items: [
-        {
-          discoveryIndex: 0,
-          proposition: "The fox jumps.",
-          claim: "The dog is lazy.",
-          integrity: failed,
-        },
-      ],
-    },
-  });
-  assert.equal(result.state.working.items.length, 0);
-  assert.equal(
-    candidateRejections(result.state.outcomes, result.state.source)[0]?.reason,
-    "integrity: meaning_changed",
-  );
-  assert.equal(server.requests.length, 0);
 });
 
 test("framing evaluates the emitted claim with the bounded source text", async () => {
@@ -805,142 +544,6 @@ test("framing rejects a mismatched classifier result count", async () => {
   );
 });
 
-test("APS receives untouched text and canonicalisation and repair receive bounded context", async (t) => {
-  const text = "Mr. Burns paid $3 million.\nSenna won by 0.2 seconds. 🦉";
-  const context = { sectionPath: ["1992", "Race"], leadIn: "The driver was Ayrton Senna." };
-  const server = await chatServer(t, (request) => {
-    assert.equal(request.reasoning_effort, "none");
-    if (request.model === "aps") {
-      assert.deepEqual(request.messages, [{ role: "user", content: text }]);
-      assert.equal(request.response_format, undefined);
-      assert.equal(request.reasoning, undefined);
-      return "PROPOSITIONS:\n- Senna won by 0.2 seconds.";
-    }
-    const input = request.messages.find((message) => message.role === "user")!.content;
-    if (request.model === "claim") {
-      const supplied = JSON.parse(input.split("SOURCE CONTEXT\n")[1]!.split("\n\nPROPOSITION")[0]!);
-      assert.deepEqual(supplied.context, context);
-      assert.equal(supplied.block_text, text);
-    } else {
-      assert.deepEqual(JSON.parse(input).source.context, context);
-    }
-    return JSON.stringify({ claim: "Ayrton Senna won by 0.2 seconds." });
-  });
-  const bounded = { ...source, text, context };
-  const graph = createLunaAtomisationPipeline(
-    {
-      apsClient: server.client("aps"),
-      llmClient: server.client("claim"),
-      classifyIntegrity: async () => [decision()],
-      classifyFraming: async (framingSource, claims) => {
-        assert.deepEqual(framingSource.context, context);
-        assert.deepEqual(claims, ["Ayrton Senna won by 0.2 seconds."]);
-        return [
-          {
-            world: { layer: "real_world" },
-            epistemic: { source_commitment: "asserted", modal_frame: "actual" },
-            temporal: { instability: "stable" },
-          },
-        ];
-      },
-      tag: async () => [[]],
-    },
-    { recovery: false },
-  );
-  const result = await run(graph, initialAtomisationState(bounded));
-  assert.equal(result.succeeded, true, result.summary ?? "failed");
-  const repaired = await runTask(createRepairAgent(server.client("repair")), {
-    sourceTitle: bounded.title,
-    blockText: text,
-    context,
-    proposition: "He won.",
-    claim: "He won.",
-  });
-  assert.ok(repaired.claim);
-  const split = await runTask(createSplitAgent(server.client("aps")), text);
-  assert.ok(split.items.length);
-});
-
-test("dedupe preserves signs, decimal points, case and punctuation while removing exact copies", async () => {
-  const propositions = [
-    "It was -5°C.",
-    "It was +5°C.",
-    "US won.",
-    "us won.",
-    "It was 0.2.",
-    "It was 02.",
-    "US won.",
-  ];
-  const result = await run(oneStage(nodeFromPipeline("dedupe")), {
-    ...initialAtomisationState(source),
-    working: {
-      phase: "discovered",
-      items: propositions.map((proposition, discoveryIndex) => ({
-        proposition,
-        discoveryIndex,
-      })),
-    },
-  });
-  assert.deepEqual(
-    result.state.working.items.map((candidate) => candidate.proposition),
-    propositions.slice(0, -1),
-  );
-  assert.equal(
-    candidateRejections(result.state.outcomes, result.state.source)[0]?.candidateIndex,
-    6,
-  );
-});
-
-test("repair, split and split-child canonicalisation failures fail recovery", async (t) => {
-  for (const failing of ["repair", "split", "claim"]) {
-    const server = await chatServer(t, (request) => {
-      if (
-        (request.messages.some(
-          (message) => message.role === "system" && message.content.startsWith("Revise"),
-        )
-          ? "repair"
-          : request.model) === failing
-      ) {
-        throw new Error("provider unavailable");
-      }
-      if (request.model === "split") {
-        return "PROPOSITIONS:\n- Child fact.";
-      }
-      return JSON.stringify({ claim: "A claim." });
-    });
-    const graph = oneStage(
-      recoveryNode({
-        classifyIntegrity: async () =>
-          assert.fail("Failed transformations must not reach classification"),
-        apsClient: server.client("split"),
-        llmClient: server.client("claim"),
-      }),
-    );
-    await assert.rejects(
-      run(
-        graph,
-        {
-          ...initialAtomisationState(source),
-          working: {
-            phase: "assessed",
-            items: [
-              {
-                discoveryIndex: 0,
-                proposition: "A compound fact.",
-                claim: "A compound fact.",
-                integrity: decision(
-                  failing === "repair" ? { standalone: false } : { atomic: false },
-                ),
-              },
-            ],
-          },
-        },
-        { signal: AbortSignal.timeout(15000) },
-      ),
-    );
-  }
-});
-
 test("downstream stages reject missing or blank canonical claims before model calls", async (t) => {
   const server = await chatServer(t, () =>
     assert.fail("Invalid candidates must not reach a model"),
@@ -949,12 +552,7 @@ test("downstream stages reject missing or blank canonical claims before model ca
     assert.fail("Invalid candidates must not be classified");
   const stages = [
     nodeFromPipeline("integrity", { classifyIntegrity: classify }),
-    recoveryNode({
-      classifyIntegrity: classify,
-      apsClient: server.client("split"),
-      llmClient: server.client("claim"),
-    }),
-    nodeFromPipeline("recovery", {}, { recovery: false }),
+    resolveNode({ classifyIntegrity: classify, apsClient: server.client("aps") }),
     nodeFromPipeline("framing", {
       classifyFraming: async () => assert.fail("Invalid candidates must not be framed"),
     }),
@@ -988,7 +586,7 @@ test("downstream stages reject missing or blank canonical claims before model ca
 });
 
 test(
-  "recovery bounds whole candidate sequences at six and refills a freed slot",
+  "resolution bounds whole candidate sequences at six and refills a freed slot",
   { timeout: 10000 },
   async (t) => {
     const controller = new AbortController();
@@ -999,34 +597,31 @@ test(
     let peak = 0;
     let entered = 0;
     const server = await chatServer(t, (request) => {
-      const input = JSON.parse(
-        request.messages.find((message) => message.role === "user")!.content,
-      );
-      return JSON.stringify({ claim: `Repaired ${input.proposition}` });
+      const claim = request.messages.at(-1)!.content;
+      return `PROPOSITIONS:\n- ${claim} a.\n- ${claim} b.`;
     });
     const classify: IntegrityClassifier = async (_source, candidates, signal) => {
-      const index = Number(candidates[0]!.proposition);
+      const [index, part] = candidates[0]!.claim.split(" ");
+      if (part === "b.") {
+        return [decision()];
+      }
       active += 1;
       peak = Math.max(peak, active);
       await new Promise<void>((resolve, reject) => {
         const abort = () => reject(signal.reason);
         signal.addEventListener("abort", abort, { once: true });
-        finish.set(index, () => {
+        finish.set(Number(index), () => {
           signal.removeEventListener("abort", abort);
-          finish.delete(index);
+          finish.delete(Number(index));
           active -= 1;
           resolve();
         });
         started[++entered]!.resolve();
       });
-      return [decision({ mean: 1 - index / 100 })];
+      return [decision({ mean: 1 - Number(index) / 100 })];
     };
     const graph = oneStage(
-      recoveryNode({
-        classifyIntegrity: classify,
-        apsClient: server.client("split"),
-        llmClient: server.client("claim"),
-      }),
+      resolveNode({ classifyIntegrity: classify, apsClient: server.client("aps") }),
     );
     const running = run(
       graph,
@@ -1037,8 +632,8 @@ test(
           items: Array.from({ length: 8 }, (_, discoveryIndex) => ({
             discoveryIndex,
             proposition: String(discoveryIndex),
-            claim: `Original ${discoveryIndex}`,
-            integrity: decision({ standalone: false }),
+            claim: String(discoveryIndex),
+            integrity: decision({ atomic: false }),
           })),
         },
       },
@@ -1067,11 +662,11 @@ test(
     assert.ok(result.state.working.phase === "accepted");
     assert.deepEqual(
       result.state.working.items.map((candidate) => candidate.claim),
-      Array.from({ length: 8 }, (_, index) => `Repaired ${index}`),
+      Array.from({ length: 8 }, (_, index) => [`${index} a.`, `${index} b.`]).flat(),
     );
     assert.deepEqual(
       result.state.working.items.map((item) => item.integrity.mean),
-      Array.from({ length: 8 }, (_, index) => 1 - index / 100),
+      Array.from({ length: 8 }, (_, index) => [1 - index / 100, 1]).flat(),
     );
     assert.deepEqual(
       result.state.outcomes.map((item) => item.candidate.discoveryIndex),
@@ -1081,10 +676,10 @@ test(
 );
 
 test(
-  "out-of-order split recovery merges identities and prior history deterministically",
+  "out-of-order splits merge identities and prior history deterministically",
   { timeout: 10000 },
   async (t) => {
-    const directory = mkdtempSync(join(tmpdir(), "atomiser-recovery-ledger-"));
+    const directory = mkdtempSync(join(tmpdir(), "atomiser-split-ledger-"));
     t.after(() => rmSync(directory, { recursive: true, force: true }));
     const ledgerPath = join(directory, "runs.sqlite3");
     const releaseFirst = gate();
@@ -1092,15 +687,11 @@ test(
     t.after(() => releaseFirst.resolve());
     const server = await chatServer(t, async (request) => {
       const message = request.messages.find((item) => item.role === "user")!.content;
-      if (request.model === "split") {
-        if (message === "Parent A") {
-          await releaseFirst.promise;
-        }
-        const letter = message.endsWith("A") ? "A" : "B";
-        return `PROPOSITIONS:\n- Child ${letter} good.\n- Child ${letter} compound.`;
+      if (message === "Parent A") {
+        await releaseFirst.promise;
       }
-      assert.equal(request.model, "claim");
-      return JSON.stringify({ claim: message.split("PROPOSITION\n")[1] });
+      const letter = message.endsWith("A") ? "A" : "B";
+      return `PROPOSITIONS:\n- Child ${letter} good.\n- Child ${letter} compound.`;
     });
     const checks: string[] = [];
     const classify: IntegrityClassifier = async (_source, candidates) =>
@@ -1112,14 +703,7 @@ test(
         return decision({ atomic: !candidate.proposition.endsWith("compound.") });
       });
     const graph = oneStage(
-      recoveryNode(
-        {
-          classifyIntegrity: classify,
-          apsClient: server.client("split"),
-          llmClient: server.client("claim"),
-        },
-        ledgerPath,
-      ),
+      resolveNode({ classifyIntegrity: classify, apsClient: server.client("aps") }, ledgerPath),
       true,
     );
     const input: AtomisationState = {
@@ -1186,7 +770,7 @@ test(
       ],
     );
     assert.deepEqual(result.state.outcomes[0], input.outcomes[0]);
-    assert.equal(server.requests.filter((request) => request.model === "split").length, 2);
+    assert.equal(server.requests.length, 2);
     const single = await run(
       graph,
       {
@@ -1229,10 +813,13 @@ test(
 );
 
 test(
-  "parallel recovery propagates cancellation and operational failure",
+  "parallel resolution propagates cancellation and operational failure",
   { timeout: 10000 },
   async (t) => {
-    const server = await chatServer(t, () => JSON.stringify({ claim: "Repaired fact." }));
+    const server = await chatServer(t, (request) => {
+      const claim = request.messages.at(-1)!.content;
+      return `PROPOSITIONS:\n- ${claim} a.\n- ${claim} b.`;
+    });
     for (const cancel of [true, false]) {
       const controller = new AbortController();
       t.after(() => controller.abort());
@@ -1251,18 +838,14 @@ test(
           );
         } else {
           await release.promise;
-          if (candidates[0]!.proposition === "0") {
-            throw new Error("Recovery classifier unavailable");
+          if (candidates[0]!.claim === "0 a.") {
+            throw new Error("Split classifier unavailable");
           }
         }
         return [decision()];
       };
       const graph = oneStage(
-        recoveryNode({
-          classifyIntegrity: classify,
-          apsClient: server.client("split"),
-          llmClient: server.client("claim"),
-        }),
+        resolveNode({ classifyIntegrity: classify, apsClient: server.client("aps") }),
       );
       const running = run(
         graph,
@@ -1273,8 +856,8 @@ test(
             items: Array.from({ length: 8 }, (_, discoveryIndex) => ({
               discoveryIndex,
               proposition: String(discoveryIndex),
-              claim: `Original ${discoveryIndex}`,
-              integrity: decision({ standalone: false }),
+              claim: String(discoveryIndex),
+              integrity: decision({ atomic: false }),
             })),
           },
         },
@@ -1282,7 +865,7 @@ test(
       );
       const rejected = assert.rejects(
         running,
-        cancel ? /cancel|abort/iu : /Recovery classifier unavailable|Recovery failed/u,
+        cancel ? /cancel|abort/iu : /Split classifier unavailable/u,
       );
       await started.promise;
       if (cancel) {
@@ -1380,7 +963,7 @@ test("finalisation keeps each survivor's scores, framing and tags when candidate
     proposition: "First.",
     claim: "First claim.",
     integrity: decision({ mean: 0.8 }),
-    recovery: "repaired" as const,
+    recovery: "split" as const,
     framing: {
       world: { layer: "real_world" as const },
       epistemic: { source_commitment: "asserted" as const, modal_frame: "actual" as const },
@@ -1422,7 +1005,7 @@ test("finalisation keeps each survivor's scores, framing and tags when candidate
       },
       framing: candidate.framing,
       scores: { probabilities: candidate.integrity.probabilities, mean: candidate.integrity.mean },
-      recovery: "repaired",
+      recovery: "split",
     })),
     candidateRejections: [
       {
@@ -1436,39 +1019,10 @@ test("finalisation keeps each survivor's scores, framing and tags when candidate
   });
 });
 
-test("blank split-child claims fail before integrity classification", async (t) => {
-  const server = await chatServer(t, (request) =>
-    request.model === "split" ? "PROPOSITIONS:\n- Child fact." : JSON.stringify({ claim: "   " }),
-  );
-  const graph = oneStage(
-    recoveryNode({
-      classifyIntegrity: async () => assert.fail("Blank child claims must not be classified"),
-      apsClient: server.client("split"),
-      llmClient: server.client("claim"),
-    }),
-  );
-  await assert.rejects(
-    run(graph, {
-      ...initialAtomisationState(source),
-      working: {
-        phase: "assessed",
-        items: [
-          {
-            discoveryIndex: 0,
-            proposition: "Compound.",
-            claim: "Compound.",
-            integrity: decision({ atomic: false }),
-          },
-        ],
-      },
-    }),
-  );
-});
-
-test("the source pipeline exposes eight processing nodes and two terminals", () => {
-  const graph = createLunaAtomisationPipeline({
+test("the source pipeline exposes seven processing nodes and one terminal", () => {
+  const graph = createClaimExtractorAtomisationPipeline({
+    extractClaims: async () => [],
     apsClient: unusedClient,
-    llmClient: unusedClient,
     classifyIntegrity: async () => [],
     classifyFraming: async () => assert.fail("No execution"),
     tag: async () => [],
@@ -1477,21 +1031,19 @@ test("the source pipeline exposes eight processing nodes and two terminals", () 
   assert.deepEqual(
     inspection.nodes.map((node) => [node.id, node.kind]),
     [
-      ["aps-discovery", "agent"],
+      ["claim-extract", "stage"],
       ["dedupe", "stage"],
-      ["canonicalise", "collection"],
       ["integrity", "stage"],
-      ["recovery", "collection"],
+      ["resolve-claims", "collection"],
       ["framing", "stage"],
       ["tagging", "stage"],
       ["finalize", "stage"],
       ["done", "completion"],
-      ["failed", "failure"],
     ],
   );
   assert.deepEqual(
     inspection.nodes.filter((node) => node.kind === "collection").map((node) => node.max),
-    [6, 6],
+    [6],
   );
-  assert.deepEqual(inspection.outputs, ["done", "failed"]);
+  assert.deepEqual(inspection.outputs, ["done"]);
 });

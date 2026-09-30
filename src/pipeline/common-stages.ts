@@ -105,10 +105,5 @@ export const createCommonStages = (
       return `${state.output.atoms.length} atoms accepted.`;
     },
   });
-  const failed = output<AtomisationState>({
-    id: "failed",
-    failed: true,
-    summary: () => "Atomization failed.",
-  });
-  return { integrity, framing, tagging, finalize, done, failed };
+  return { integrity, framing, tagging, finalize, done };
 };
