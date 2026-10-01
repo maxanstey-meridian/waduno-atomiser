@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ClaimExtractorEndpoint } from "./application/ports/claim-extractor.js";
 
 const positiveInteger = (defaultValue: number) =>
   z.coerce.number().int().positive().default(defaultValue);
@@ -39,6 +40,7 @@ const EnvironmentConfig = z.object({
   CLAIM_EXTRACTOR_MODEL: z.string().trim().min(1).default("claim-extractor-4B-q-2605-oQ8-MTP"),
   CLAIM_EXTRACTOR_API_KEY_ENVIRONMENT_VARIABLE: z.string().trim().min(1).default("APS_API_KEY"),
   CLAIM_EXTRACTOR_REQUEST_TIMEOUT_MILLISECONDS: positiveInteger(180_000),
+  CLAIM_EXTRACTOR_REASONING_EFFORT: z.enum(["minimal", "low", "medium", "high"]).optional(),
 });
 
 const requiredApiKey = (environment: NodeJS.ProcessEnv, name: string, purpose: string) => {
@@ -59,10 +61,7 @@ export type AtomiserConfig = {
   readonly ledgerPath?: string;
   readonly apsRequestTimeoutMilliseconds: number;
   readonly apsIdleTimeoutMilliseconds: number;
-  readonly claimExtractorBaseUrl: string;
-  readonly claimExtractorModel: string;
-  readonly claimExtractorApiKeyEnvironmentVariable: string;
-  readonly claimExtractorRequestTimeoutMilliseconds: number;
+  readonly claimExtractor: ClaimExtractorEndpoint;
 };
 
 // Entrypoints pass their environment here. Defaults and required-key checks are
@@ -82,10 +81,13 @@ export const parseAtomiserEnv = (environment: NodeJS.ProcessEnv = process.env): 
     glinerModelPath: value.GLINER_MODEL_PATH,
     apsRequestTimeoutMilliseconds: value.APS_REQUEST_TIMEOUT_MILLISECONDS,
     apsIdleTimeoutMilliseconds: value.APS_IDLE_TIMEOUT_MILLISECONDS,
-    claimExtractorBaseUrl: value.CLAIM_EXTRACTOR_BASE_URL,
-    claimExtractorModel: value.CLAIM_EXTRACTOR_MODEL,
-    claimExtractorApiKeyEnvironmentVariable: value.CLAIM_EXTRACTOR_API_KEY_ENVIRONMENT_VARIABLE,
-    claimExtractorRequestTimeoutMilliseconds: value.CLAIM_EXTRACTOR_REQUEST_TIMEOUT_MILLISECONDS,
+    claimExtractor: {
+      baseUrl: value.CLAIM_EXTRACTOR_BASE_URL,
+      model: value.CLAIM_EXTRACTOR_MODEL,
+      apiKeyVariable: value.CLAIM_EXTRACTOR_API_KEY_ENVIRONMENT_VARIABLE,
+      reasoningEffort: value.CLAIM_EXTRACTOR_REASONING_EFFORT ?? null,
+      timeoutMilliseconds: value.CLAIM_EXTRACTOR_REQUEST_TIMEOUT_MILLISECONDS,
+    },
     ledgerPath: value.TANDEM_LEDGER_PATH,
   };
 };

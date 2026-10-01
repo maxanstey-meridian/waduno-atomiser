@@ -8,7 +8,13 @@ const source = {
   context: { sectionPath: ["Frankenstein"], leadIn: "Shelley began writing in 1816." },
 };
 const extractor = (program: string) =>
-  createClaimExtractor(process.execPath, "-e", program, "unused", "unused", 5000);
+  createClaimExtractor(process.execPath, "-e", {
+    baseUrl: program,
+    model: "unused",
+    apiKeyVariable: "unused",
+    reasoningEffort: null,
+    timeoutMilliseconds: 5000,
+  });
 
 test("an extractor that exits before reading a large source rejects without crashing the host", async () => {
   await assert.rejects(

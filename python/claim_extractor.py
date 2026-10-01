@@ -7,7 +7,7 @@ from orbitals.claim_extractor.prompting import prepare_messages, validate_extrac
 
 
 def main():
-    endpoint, model, api_key_variable, timeout_seconds = sys.argv[1:5]
+    endpoint, model, api_key_variable, timeout_seconds, reasoning_effort = sys.argv[1:6]
     source = json.load(sys.stdin)
     messages = prepare_messages([
         {"role": "user", "content": "SOURCE CONTEXT\n" + json.dumps({
@@ -31,6 +31,9 @@ def main():
         "max_tokens": 4096,
         "stream": False,
     }
+    if reasoning_effort:
+        # Hosted reasoning models only; the local fine-tune is sent exactly the request above.
+        request_body["reasoning"] = {"effort": reasoning_effort}
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = "Bearer " + api_key

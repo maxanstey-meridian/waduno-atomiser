@@ -124,7 +124,18 @@ test("configuration requires only the Jev key and defaults the ClaimExtractor mo
     OPENROUTER_API_KEY: "jev-key",
   });
   assert.equal(config.openRouterApiKey, "jev-key");
-  assert.equal(config.claimExtractorModel, "claim-extractor-4B-q-2605-oQ8-MTP");
+  assert.deepEqual(config.claimExtractor, {
+    baseUrl: "http://127.0.0.1:8092/v1",
+    model: "claim-extractor-4B-q-2605-oQ8-MTP",
+    apiKeyVariable: "APS_API_KEY",
+    reasoningEffort: null,
+    timeoutMilliseconds: 180_000,
+  });
+  assert.equal(
+    parseAtomiserEnv({ OPENROUTER_API_KEY: "k", CLAIM_EXTRACTOR_REASONING_EFFORT: "minimal" })
+      .claimExtractor.reasoningEffort,
+    "minimal",
+  );
   assert.throws(() => parseAtomiserEnv({}), /OPENROUTER_API_KEY is required/u);
 });
 

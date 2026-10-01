@@ -84,28 +84,29 @@ in `.env`. The local ClaimExtractor and APS endpoint keys are optional.
 Use [.env.example](.env.example) as the starting point. Values below are defaults
 unless noted otherwise.
 
-| Variable                                       | Default / example                   | Purpose                                                                       |
-| ---------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------- |
-| `CLAIM_EXTRACTOR_BASE_URL`                     | `http://127.0.0.1:8092/v1`          | OpenAI-compatible ClaimExtractor endpoint.                                    |
-| `CLAIM_EXTRACTOR_MODEL`                        | `claim-extractor-4B-q-2605-oQ8-MTP` | Model name exposed by the ClaimExtractor server.                              |
-| `CLAIM_EXTRACTOR_API_KEY_ENVIRONMENT_VARIABLE` | `APS_API_KEY`                       | Name of the variable holding the optional endpoint key.                       |
-| `CLAIM_EXTRACTOR_REQUEST_TIMEOUT_MILLISECONDS` | `180000`                            | ClaimExtractor request timeout.                                               |
-| `APS_BASE_URL`                                 | `http://127.0.0.1:8092/v1`          | OpenAI-compatible Gemma-APS endpoint.                                         |
-| `APS_MODEL`                                    | `gemma-7b-aps-it-8bit`              | Model name exposed by the APS server.                                         |
-| `APS_API_KEY`                                  | Optional; example uses `local`      | Leave blank for an unauthenticated local endpoint.                            |
-| `APS_API_KEY_ENVIRONMENT_VARIABLE`             | `APS_API_KEY`                       | Name of the variable holding the APS endpoint key.                            |
-| `APS_REQUEST_TIMEOUT_MILLISECONDS`             | `120000`                            | APS request timeout.                                                          |
-| `APS_IDLE_TIMEOUT_MILLISECONDS`                | `30000`                             | APS stream idle timeout.                                                      |
-| `OPENROUTER_API_KEY`                           | Required                            | Jev key.                                                                      |
-| `ATOMISER_HOST`                                | `127.0.0.1`                         | HTTP host bind address.                                                       |
-| `ATOMISER_PORT`                                | `8099`                              | HTTP port.                                                                    |
-| `ATOMISER_CONCURRENCY`                         | `2`                                 | Maximum active HTTP source runs.                                              |
-| `ATOMISER_TIMEOUT_MS`                          | `600000`                            | Timeout per HTTP source run once it holds a slot, in milliseconds.            |
-| `ATOMISER_QUEUE_LIMIT`                         | `8`                                 | Requests allowed to wait for a slot; beyond this the host answers 503 `busy`. |
-| `CORPUS_BASE_URL`                              | `http://127.0.0.1:8098`             | Example corpus API address used by the demo.                                  |
-| `TANDEM_LEDGER_PATH`                           | unset                               | Optional SQLite execution ledger path; unset keeps no run history.            |
-| `PYTHON`                                       | `python3.13`                        | Executable used to create `.venv`; runtime uses `.venv/bin/python`.           |
-| `GLINER_MODEL_PATH`                            | `.data/gliner2.5-base-v1`           | Local GLiNER weights downloaded by setup.                                     |
+| Variable                                       | Default / example                   | Purpose                                                                                   |
+| ---------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------- |
+| `CLAIM_EXTRACTOR_BASE_URL`                     | `http://127.0.0.1:8092/v1`          | OpenAI-compatible ClaimExtractor endpoint.                                                |
+| `CLAIM_EXTRACTOR_MODEL`                        | `claim-extractor-4B-q-2605-oQ8-MTP` | Model name exposed by the ClaimExtractor server.                                          |
+| `CLAIM_EXTRACTOR_API_KEY_ENVIRONMENT_VARIABLE` | `APS_API_KEY`                       | Name of the variable holding the optional endpoint key.                                   |
+| `CLAIM_EXTRACTOR_REQUEST_TIMEOUT_MILLISECONDS` | `180000`                            | ClaimExtractor request timeout.                                                           |
+| `CLAIM_EXTRACTOR_REASONING_EFFORT`             | unset                               | Reasoning effort for a hosted model given the same prompt; unset for the local fine-tune. |
+| `APS_BASE_URL`                                 | `http://127.0.0.1:8092/v1`          | OpenAI-compatible Gemma-APS endpoint.                                                     |
+| `APS_MODEL`                                    | `gemma-7b-aps-it-8bit`              | Model name exposed by the APS server.                                                     |
+| `APS_API_KEY`                                  | Optional; example uses `local`      | Leave blank for an unauthenticated local endpoint.                                        |
+| `APS_API_KEY_ENVIRONMENT_VARIABLE`             | `APS_API_KEY`                       | Name of the variable holding the APS endpoint key.                                        |
+| `APS_REQUEST_TIMEOUT_MILLISECONDS`             | `120000`                            | APS request timeout.                                                                      |
+| `APS_IDLE_TIMEOUT_MILLISECONDS`                | `30000`                             | APS stream idle timeout.                                                                  |
+| `OPENROUTER_API_KEY`                           | Required                            | Jev key.                                                                                  |
+| `ATOMISER_HOST`                                | `127.0.0.1`                         | HTTP host bind address.                                                                   |
+| `ATOMISER_PORT`                                | `8099`                              | HTTP port.                                                                                |
+| `ATOMISER_CONCURRENCY`                         | `2`                                 | Maximum active HTTP source runs.                                                          |
+| `ATOMISER_TIMEOUT_MS`                          | `600000`                            | Timeout per HTTP source run once it holds a slot, in milliseconds.                        |
+| `ATOMISER_QUEUE_LIMIT`                         | `8`                                 | Requests allowed to wait for a slot; beyond this the host answers 503 `busy`.             |
+| `CORPUS_BASE_URL`                              | `http://127.0.0.1:8098`             | Example corpus API address used by the demo.                                              |
+| `TANDEM_LEDGER_PATH`                           | unset                               | Optional SQLite execution ledger path; unset keeps no run history.                        |
+| `PYTHON`                                       | `python3.13`                        | Executable used to create `.venv`; runtime uses `.venv/bin/python`.                       |
+| `GLINER_MODEL_PATH`                            | `.data/gliner2.5-base-v1`           | Local GLiNER weights downloaded by setup.                                                 |
 
 ### HTTP and CLI
 

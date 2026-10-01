@@ -41,10 +41,7 @@ export const bootstrapAtomiser = async (config: AtomiserConfig): Promise<Atomise
       extractClaims: createClaimExtractor(
         config.glinerPython,
         fileURLToPath(new URL("../python/claim_extractor.py", import.meta.url)),
-        config.claimExtractorBaseUrl,
-        config.claimExtractorModel,
-        config.claimExtractorApiKeyEnvironmentVariable,
-        config.claimExtractorRequestTimeoutMilliseconds,
+        config.claimExtractor,
       ),
       apsClient,
       classifyIntegrity,

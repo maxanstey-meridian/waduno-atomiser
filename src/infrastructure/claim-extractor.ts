@@ -1,31 +1,31 @@
 import { spawn } from "node:child_process";
 import { z } from "zod";
-import type { ClaimExtractor } from "../application/ports/claim-extractor.js";
+import type {
+  ClaimExtractor,
+  ClaimExtractorEndpoint,
+} from "../application/ports/claim-extractor.js";
 
 const Response = z.strictObject({
   claims: z.array(z.strictObject({ content: z.string().trim().min(1) })),
 });
 
 export const createClaimExtractor =
-  (
-    python: string,
-    script: string,
-    endpoint: string,
-    model: string,
-    apiKeyEnvironmentVariable: string,
-    timeoutMilliseconds: number,
-  ): ClaimExtractor =>
+  (python: string, script: string, endpoint: ClaimExtractorEndpoint): ClaimExtractor =>
   async (source, signal) => {
     signal.throwIfAborted();
-    const executionSignal = AbortSignal.any([signal, AbortSignal.timeout(timeoutMilliseconds)]);
+    const executionSignal = AbortSignal.any([
+      signal,
+      AbortSignal.timeout(endpoint.timeoutMilliseconds),
+    ]);
     const child = spawn(
       python,
       [
         script,
-        endpoint,
-        model,
-        apiKeyEnvironmentVariable,
-        String(Math.ceil(timeoutMilliseconds / 1000)),
+        endpoint.baseUrl,
+        endpoint.model,
+        endpoint.apiKeyVariable,
+        String(Math.ceil(endpoint.timeoutMilliseconds / 1000)),
+        endpoint.reasoningEffort ?? "",
       ],
       {
         signal: executionSignal,
