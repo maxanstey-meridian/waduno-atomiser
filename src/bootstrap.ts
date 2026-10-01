@@ -19,16 +19,16 @@ export const bootstrapAtomiser = async (config: AtomiserConfig): Promise<Atomise
   if (config.ledgerPath) {
     await mkdir(dirname(config.ledgerPath), { recursive: true });
   }
-  const apsClient: ChatClient = {
+  const splitClient: ChatClient = {
     kind: "openai-compatible",
     version: 1,
-    endpoint: config.apsBaseUrl,
-    model: config.apsModel,
+    endpoint: config.splitBaseUrl,
+    model: config.splitModel,
     wireApi: "completions",
-    apiKeyEnvironmentVariable: config.apsApiKeyEnvironmentVariable,
+    apiKeyEnvironmentVariable: config.splitApiKeyEnvironmentVariable,
     verifyModel: true,
-    requestTimeoutMs: config.apsRequestTimeoutMilliseconds,
-    idleTimeoutMs: config.apsIdleTimeoutMilliseconds,
+    requestTimeoutMs: config.splitRequestTimeoutMilliseconds,
+    idleTimeoutMs: config.splitIdleTimeoutMilliseconds,
   };
   const { classifyIntegrity, classifyFraming } = createJevClassifiers(config.openRouterApiKey);
   const tagger = createGlinerTagger(
@@ -43,7 +43,7 @@ export const bootstrapAtomiser = async (config: AtomiserConfig): Promise<Atomise
         fileURLToPath(new URL("../python/claim_extractor.py", import.meta.url)),
         config.claimExtractor,
       ),
-      apsClient,
+      splitClient,
       classifyIntegrity,
       classifyFraming,
       tag: tagger.tag,

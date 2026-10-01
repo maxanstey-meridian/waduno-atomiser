@@ -22,7 +22,7 @@ import { AtomisationState } from "./state.js";
 
 export type ClaimExtractorPipelineDependencies = {
   readonly extractClaims: ClaimExtractor;
-  readonly apsClient: ChatClient;
+  readonly splitClient: ChatClient;
   readonly classifyIntegrity: IntegrityClassifier;
   readonly classifyFraming: FramingClassifier;
   readonly tag: AtomTagger;
@@ -41,14 +41,14 @@ const noPropositionsOutput = (): AtomizationOutput => ({
 export const createClaimExtractorAtomisationPipeline = (
   {
     extractClaims,
-    apsClient,
+    splitClient,
     classifyIntegrity,
     classifyFraming,
     tag,
   }: ClaimExtractorPipelineDependencies,
   options: ClaimExtractorPipelineOptions = {},
 ): Pipeline<AtomisationState> => {
-  const splitAgent = createSplitAgent(apsClient);
+  const splitAgent = createSplitAgent(splitClient);
   const extracted = stage<AtomisationState>({
     id: "claim-extract",
     execute: async (state, { signal }) => {
@@ -122,7 +122,7 @@ export const createClaimExtractorAtomisationPipeline = (
         return {
           outcome: "rejected",
           candidate,
-          reason: `${candidate.integrity.reason}; APS did not split the claim`,
+          reason: `${candidate.integrity.reason}; the splitter did not split the claim`,
         };
       }
       const children: CandidateResolution[] = [];

@@ -18,6 +18,7 @@ import test from "node:test";
 import { stripVTControlCharacters } from "node:util";
 import { formatDemoResult, saveDemoResult } from "../scripts/demo-report.js";
 import { measureOpenRouterSpend } from "../scripts/openrouter-spend.js";
+import { SPLIT_INSTRUCTIONS } from "../src/agents/split.js";
 import type { IntegrityClassifier } from "../src/application/ports/integrity-classifier.js";
 import { CandidateRejection } from "../src/contracts/atomise.js";
 import { SourceEnvelope } from "../src/contracts/source.js";
@@ -93,7 +94,7 @@ const nodeFromPipeline = (
   const graph = createClaimExtractorAtomisationPipeline(
     {
       extractClaims: async () => assert.fail("Unexpected extraction call"),
-      apsClient: unusedClient,
+      splitClient: unusedClient,
       classifyIntegrity: async () => assert.fail("Unexpected integrity call"),
       classifyFraming: async () => assert.fail("Unexpected framing call"),
       tag: async () => assert.fail("Unexpected tagging call"),
@@ -147,7 +148,7 @@ test(
           `${extractSource.title}: Fact 6 and Fact 7.`,
         ],
         tag: async (title, claims) => claims.map((claim) => [title, claim]),
-        apsClient: server.client("aps-test"),
+        splitClient: server.client("split-test"),
         classifyIntegrity: async (_source, candidates) =>
           candidates.map((candidate) =>
             decision(
@@ -294,13 +295,15 @@ test("dedupe preserves signs, decimal points, case and punctuation while removin
   );
 });
 
-test("extraction receives the bounded source and APS receives the failing claim verbatim", async (t) => {
+test("extraction receives the bounded source and the splitter receives the failing claim verbatim", async (t) => {
   const text = "Mr. Burns paid $3 million.\nSenna won by 0.2 seconds. 🦉";
   const context = { sectionPath: ["1992", "Race"], leadIn: "The driver was Ayrton Senna." };
   const compound = "Ayrton Senna won by 0.2 seconds and Mr. Burns paid $3 million.";
   const server = await chatServer(t, (request) => {
     assert.equal(request.reasoning_effort, "none");
-    assert.deepEqual(request.messages, [{ role: "user", content: compound }]);
+    assert.deepEqual(request.messages.at(-1), { role: "user", content: compound });
+    assert.equal(request.messages[0]?.role, "system");
+    assert.ok(String(request.messages[0]?.content).includes(SPLIT_INSTRUCTIONS));
     assert.equal(request.response_format, undefined);
     assert.equal(request.reasoning, undefined);
     return "PROPOSITIONS:\n- Ayrton Senna won by 0.2 seconds.\n- Mr. Burns paid $3 million.";
@@ -311,7 +314,7 @@ test("extraction receives the bounded source and APS receives the failing claim 
       assert.deepEqual(extractSource, bounded);
       return [compound];
     },
-    apsClient: server.client("aps"),
+    splitClient: server.client("split"),
     classifyIntegrity: async (integritySource, candidates) => {
       assert.deepEqual(integritySource.context, context);
       return candidates.map((candidate) =>
@@ -330,7 +333,7 @@ test("extraction receives the bounded source and APS receives the failing claim 
   assert.equal(server.requests.length, 1);
 });
 
-test("resolution accepts passing claims and rejects unsplittable failures without APS", async () => {
+test("resolution accepts passing claims and rejects unsplittable failures without the splitter", async () => {
   const result = await run(oneStage(resolveNode({})), {
     ...initialAtomisationState(source),
     working: {
@@ -386,7 +389,7 @@ test(
         return decision();
       });
     const result = await run(
-      oneStage(resolveNode({ classifyIntegrity: classify, apsClient: server.client("aps") })),
+      oneStage(resolveNode({ classifyIntegrity: classify, splitClient: server.client("split") })),
       {
         ...initialAtomisationState(source),
         working: {
@@ -429,7 +432,7 @@ test(
         ["Unsupported.", "no"],
         ["Child unsupported.", "unsupported child"],
         ["Child compound.", "compound child"],
-        ["Compound B.", "compound; APS did not split the claim"],
+        ["Compound B.", "compound; the splitter did not split the claim"],
       ],
     );
     assert.equal(server.requests.length, 2);
@@ -454,7 +457,7 @@ test(
   },
 );
 
-test("APS failures and malformed split output fail resolution", async (t) => {
+test("splitter failures and malformed split output fail resolution", async (t) => {
   for (const response of ["unavailable", "Sorry, I cannot split that."]) {
     const server = await chatServer(t, () => {
       if (response === "unavailable") {
@@ -468,7 +471,7 @@ test("APS failures and malformed split output fail resolution", async (t) => {
           resolveNode({
             classifyIntegrity: async () =>
               assert.fail("Failed splits must not reach classification"),
-            apsClient: server.client("aps"),
+            splitClient: server.client("split"),
           }),
         ),
         {
@@ -552,7 +555,7 @@ test("downstream stages reject missing or blank canonical claims before model ca
     assert.fail("Invalid candidates must not be classified");
   const stages = [
     nodeFromPipeline("integrity", { classifyIntegrity: classify }),
-    resolveNode({ classifyIntegrity: classify, apsClient: server.client("aps") }),
+    resolveNode({ classifyIntegrity: classify, splitClient: server.client("split") }),
     nodeFromPipeline("framing", {
       classifyFraming: async () => assert.fail("Invalid candidates must not be framed"),
     }),
@@ -621,7 +624,7 @@ test(
       return [decision({ mean: 1 - Number(index) / 100 })];
     };
     const graph = oneStage(
-      resolveNode({ classifyIntegrity: classify, apsClient: server.client("aps") }),
+      resolveNode({ classifyIntegrity: classify, splitClient: server.client("split") }),
     );
     const running = run(
       graph,
@@ -703,7 +706,7 @@ test(
         return decision({ atomic: !candidate.proposition.endsWith("compound.") });
       });
     const graph = oneStage(
-      resolveNode({ classifyIntegrity: classify, apsClient: server.client("aps") }, ledgerPath),
+      resolveNode({ classifyIntegrity: classify, splitClient: server.client("split") }, ledgerPath),
       true,
     );
     const input: AtomisationState = {
@@ -845,7 +848,7 @@ test(
         return [decision()];
       };
       const graph = oneStage(
-        resolveNode({ classifyIntegrity: classify, apsClient: server.client("aps") }),
+        resolveNode({ classifyIntegrity: classify, splitClient: server.client("split") }),
       );
       const running = run(
         graph,
@@ -1022,7 +1025,7 @@ test("finalisation keeps each survivor's scores, framing and tags when candidate
 test("the source pipeline exposes seven processing nodes and one terminal", () => {
   const graph = createClaimExtractorAtomisationPipeline({
     extractClaims: async () => [],
-    apsClient: unusedClient,
+    splitClient: unusedClient,
     classifyIntegrity: async () => [],
     classifyFraming: async () => assert.fail("No execution"),
     tag: async () => [],

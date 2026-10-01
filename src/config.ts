@@ -28,14 +28,14 @@ const modelBaseUrl = z
 // Validate the environment-facing names once, then hand the rest of the app a
 // typed config. Secret variable names are retained where Tandem resolves the key.
 const EnvironmentConfig = z.object({
-  APS_BASE_URL: modelBaseUrl.default("http://127.0.0.1:8092/v1"),
-  APS_MODEL: z.string().trim().min(1).default("gemma-7b-aps-it-8bit"),
-  APS_API_KEY_ENVIRONMENT_VARIABLE: z.string().trim().min(1).default("APS_API_KEY"),
+  SPLIT_BASE_URL: modelBaseUrl.default("https://openrouter.ai/api/v1"),
+  SPLIT_MODEL: z.string().trim().min(1).default("openai/gpt-6-luna"),
+  SPLIT_API_KEY_ENVIRONMENT_VARIABLE: z.string().trim().min(1).default("OPENROUTER_API_KEY"),
   OPENROUTER_API_KEY: z.string().trim().min(1).optional(),
   TANDEM_LEDGER_PATH: z.string().trim().min(1).optional(),
   GLINER_MODEL_PATH: z.string().trim().min(1).default(".data/gliner2.5-base-v1"),
-  APS_REQUEST_TIMEOUT_MILLISECONDS: positiveInteger(120_000),
-  APS_IDLE_TIMEOUT_MILLISECONDS: positiveInteger(30_000),
+  SPLIT_REQUEST_TIMEOUT_MILLISECONDS: positiveInteger(30_000),
+  SPLIT_IDLE_TIMEOUT_MILLISECONDS: positiveInteger(30_000),
   CLAIM_EXTRACTOR_BASE_URL: modelBaseUrl.default("http://127.0.0.1:8092/v1"),
   CLAIM_EXTRACTOR_MODEL: z.string().trim().min(1).default("claim-extractor-4B-q-2605-oQ8-MTP"),
   CLAIM_EXTRACTOR_API_KEY_ENVIRONMENT_VARIABLE: z.string().trim().min(1).default("APS_API_KEY"),
@@ -52,15 +52,15 @@ const requiredApiKey = (environment: NodeJS.ProcessEnv, name: string, purpose: s
 };
 
 export type AtomiserConfig = {
-  readonly apsBaseUrl: string;
-  readonly apsModel: string;
-  readonly apsApiKeyEnvironmentVariable?: string;
+  readonly splitBaseUrl: string;
+  readonly splitModel: string;
+  readonly splitApiKeyEnvironmentVariable?: string;
   readonly openRouterApiKey: string;
   readonly glinerPython: string;
   readonly glinerModelPath: string;
   readonly ledgerPath?: string;
-  readonly apsRequestTimeoutMilliseconds: number;
-  readonly apsIdleTimeoutMilliseconds: number;
+  readonly splitRequestTimeoutMilliseconds: number;
+  readonly splitIdleTimeoutMilliseconds: number;
   readonly claimExtractor: ClaimExtractorEndpoint;
 };
 
@@ -68,19 +68,21 @@ export type AtomiserConfig = {
 // resolved before any client is constructed; no downstream code needs to repeat them.
 export const parseAtomiserEnv = (environment: NodeJS.ProcessEnv = process.env): AtomiserConfig => {
   const value = EnvironmentConfig.parse(environment);
-  const apsApiKeyEnvironmentVariable = value.APS_API_KEY_ENVIRONMENT_VARIABLE;
+  const splitApiKeyEnvironmentVariable = value.SPLIT_API_KEY_ENVIRONMENT_VARIABLE;
   const openRouterApiKey =
     value.OPENROUTER_API_KEY ??
     requiredApiKey(environment, "OPENROUTER_API_KEY", "Jev classification");
   return {
-    apsBaseUrl: value.APS_BASE_URL,
-    apsModel: value.APS_MODEL,
-    ...(environment[apsApiKeyEnvironmentVariable]?.trim() ? { apsApiKeyEnvironmentVariable } : {}),
+    splitBaseUrl: value.SPLIT_BASE_URL,
+    splitModel: value.SPLIT_MODEL,
+    ...(environment[splitApiKeyEnvironmentVariable]?.trim()
+      ? { splitApiKeyEnvironmentVariable }
+      : {}),
     openRouterApiKey,
     glinerPython: ".venv/bin/python",
     glinerModelPath: value.GLINER_MODEL_PATH,
-    apsRequestTimeoutMilliseconds: value.APS_REQUEST_TIMEOUT_MILLISECONDS,
-    apsIdleTimeoutMilliseconds: value.APS_IDLE_TIMEOUT_MILLISECONDS,
+    splitRequestTimeoutMilliseconds: value.SPLIT_REQUEST_TIMEOUT_MILLISECONDS,
+    splitIdleTimeoutMilliseconds: value.SPLIT_IDLE_TIMEOUT_MILLISECONDS,
     claimExtractor: {
       baseUrl: value.CLAIM_EXTRACTOR_BASE_URL,
       model: value.CLAIM_EXTRACTOR_MODEL,

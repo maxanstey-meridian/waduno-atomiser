@@ -34,8 +34,8 @@ const accepted: IntegrityDecision = {
   reason: "",
 };
 
-test("ClaimExtractor claims split through APS and reach Jev and GLiNER", async (t) => {
-  const aps = await chatServer(t, (request) => {
+test("ClaimExtractor claims split through the splitter and reach Jev and GLiNER", async (t) => {
+  const splitter = await chatServer(t, (request) => {
     const claim = request.messages.at(-1)?.content;
     if (claim === "The fox jumps and the dog sleeps.") {
       return "PROPOSITIONS:\n- The fox jumps.\n- The dog sleeps.";
@@ -49,7 +49,7 @@ test("ClaimExtractor claims split through APS and reach Jev and GLiNER", async (
       "The fox jumps and the dog sleeps.",
       "The fox jumps and the dog sleeps.",
     ],
-    apsClient: aps.client("aps"),
+    splitClient: splitter.client("split"),
     classifyIntegrity: async (_source, candidates) => {
       checked.push(...candidates.map((candidate) => candidate.claim));
       return candidates.map((candidate) =>
@@ -100,13 +100,13 @@ test("ClaimExtractor claims split through APS and reach Jev and GLiNER", async (
     result.state.output?.candidateRejections.map((rejection) => rejection.stage),
     ["deduplication", "integrity_validation"],
   );
-  assert.equal(aps.requests.length, 1);
+  assert.equal(splitter.requests.length, 1);
 });
 
 test("an empty ClaimExtractor result completes without splitting or classifying", async () => {
   const graph = createClaimExtractorAtomisationPipeline({
     extractClaims: async () => [],
-    apsClient: {
+    splitClient: {
       kind: "openai-compatible",
       version: 1,
       endpoint: "http://127.0.0.1:1/v1",
@@ -126,7 +126,7 @@ test("an empty ClaimExtractor result completes without splitting or classifying"
 test("a claim failing a check other than atomicity is rejected without splitting", async () => {
   const graph = createClaimExtractorAtomisationPipeline({
     extractClaims: async () => ["The fox jumps and the dog sleeps."],
-    apsClient: {
+    splitClient: {
       kind: "openai-compatible",
       version: 1,
       endpoint: "http://127.0.0.1:1/v1",

@@ -25,9 +25,9 @@ standalone sees only the claim. **These are model judgements, not an overall tru
 score.** The initial proposition is the extracted claim itself; for split
 children, meaning preservation is checked against their parent.
 
-All five checks must pass. A claim that fails only the atomicity check is sent to
-[Gemma-APS] for splitting; each child is checked again and failed children are
-rejected. Any other failure rejects the claim.
+All five checks must pass. A claim that fails only the atomicity check is split
+into propositions by a hosted model (Luna, thinking off) asked for [Gemma-APS]'s
+output format; each child is checked again and failed children are rejected. Any other failure rejects the claim.
 
 Jev then classifies each retained claim's world, epistemic and temporal framing.
 Fastino's [GLiNER 2.5] extracts entities using the claim and source title. Atoms
@@ -56,8 +56,7 @@ in [src/contracts](src/contracts) and are exported through the package's
 pipeline stages handle integrity, framing, tagging and finalisation.
 
 ClaimExtractor runs through a Python adapter against an OpenAI-compatible model
-endpoint; the example configuration uses local oMLX. Gemma-APS splitting uses its
-own OpenAI-compatible endpoint. Jev uses OpenRouter. [GLiNER] runs locally in a Python
+endpoint; the example configuration uses local oMLX. Splitting and Jev use OpenRouter. [GLiNER] runs locally in a Python
 subprocess kept warm between requests. The host and CLI close it on shutdown.
 
 ## Getting started
@@ -66,8 +65,8 @@ Requires Node.js 22+, pnpm, Python 3.13 and an OpenRouter key with access to Jev
 The Tandem runtime bundle supports Linux x64 and macOS on Apple silicon and
 requires the .NET 10 runtime. [Task] is used for the demo commands.
 
-Serve an OpenAI-compatible ClaimExtractor endpoint and a Gemma-APS endpoint
-separately; APS is only called for claims that fail the atomicity check.
+Serve an OpenAI-compatible ClaimExtractor endpoint. The splitter is only called for
+claims that fail the atomicity check.
 
 ```sh
 pnpm install
@@ -77,7 +76,7 @@ pnpm setup:gliner
 
 Setup creates `.venv`, installs the Python dependencies for GLiNER and
 ClaimExtractor, and downloads the pinned GLiNER weights. Set `OPENROUTER_API_KEY`
-in `.env`. The local ClaimExtractor and APS endpoint keys are optional.
+in `.env`. The local ClaimExtractor endpoint key is optional.
 
 ### Configuration
 
@@ -91,12 +90,12 @@ unless noted otherwise.
 | `CLAIM_EXTRACTOR_API_KEY_ENVIRONMENT_VARIABLE` | `APS_API_KEY`                       | Name of the variable holding the optional endpoint key.                                   |
 | `CLAIM_EXTRACTOR_REQUEST_TIMEOUT_MILLISECONDS` | `180000`                            | ClaimExtractor request timeout.                                                           |
 | `CLAIM_EXTRACTOR_REASONING_EFFORT`             | unset                               | Reasoning effort for a hosted model given the same prompt; unset for the local fine-tune. |
-| `APS_BASE_URL`                                 | `http://127.0.0.1:8092/v1`          | OpenAI-compatible Gemma-APS endpoint.                                                     |
-| `APS_MODEL`                                    | `gemma-7b-aps-it-8bit`              | Model name exposed by the APS server.                                                     |
-| `APS_API_KEY`                                  | Optional; example uses `local`      | Leave blank for an unauthenticated local endpoint.                                        |
-| `APS_API_KEY_ENVIRONMENT_VARIABLE`             | `APS_API_KEY`                       | Name of the variable holding the APS endpoint key.                                        |
-| `APS_REQUEST_TIMEOUT_MILLISECONDS`             | `120000`                            | APS request timeout.                                                                      |
-| `APS_IDLE_TIMEOUT_MILLISECONDS`                | `30000`                             | APS stream idle timeout.                                                                  |
+| `APS_API_KEY`                                  | Optional; example uses `local`      | Local ClaimExtractor endpoint key. Leave blank for an unauthenticated endpoint.           |
+| `SPLIT_BASE_URL`                               | `https://openrouter.ai/api/v1`      | OpenAI-compatible endpoint that splits non-atomic claims.                                 |
+| `SPLIT_MODEL`                                  | `openai/gpt-6-luna`                 | Splitting model; asked with reasoning effort `none`.                                      |
+| `SPLIT_API_KEY_ENVIRONMENT_VARIABLE`           | `OPENROUTER_API_KEY`                | Name of the variable holding the splitting endpoint key.                                  |
+| `SPLIT_REQUEST_TIMEOUT_MILLISECONDS`           | `30000`                             | Splitting request timeout.                                                                |
+| `SPLIT_IDLE_TIMEOUT_MILLISECONDS`              | `30000`                             | Splitting stream idle timeout.                                                            |
 | `OPENROUTER_API_KEY`                           | Required                            | Jev key.                                                                                  |
 | `ATOMISER_HOST`                                | `127.0.0.1`                         | HTTP host bind address.                                                                   |
 | `ATOMISER_PORT`                                | `8099`                              | HTTP port.                                                                                |

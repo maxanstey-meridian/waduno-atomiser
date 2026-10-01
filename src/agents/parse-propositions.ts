@@ -4,7 +4,7 @@ export const DiscoveryOutput = z.strictObject({
 });
 export type DiscoveryOutput = z.infer<typeof DiscoveryOutput>;
 
-export const parseApsPropositions = (response: string): DiscoveryOutput => {
+export const parsePropositions = (response: string): DiscoveryOutput => {
   const items: { proposition: string }[] = [];
   let header = false;
   for (const raw of response.split("\n")) {
@@ -17,12 +17,12 @@ export const parseApsPropositions = (response: string): DiscoveryOutput => {
       continue;
     }
     if (!line.startsWith("- ") || line.slice(2).trim() === "") {
-      throw new Error("APS returned malformed proposition output.");
+      throw new Error("The splitter returned malformed proposition output.");
     }
     items.push({ proposition: line.slice(2).trim() });
   }
   if (!header && items.length === 0) {
-    throw new Error("APS returned no proposition output.");
+    throw new Error("The splitter returned no proposition output.");
   }
   return { items };
 };

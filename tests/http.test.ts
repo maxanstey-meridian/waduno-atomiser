@@ -28,7 +28,7 @@ test("HTTP validates input, extracts every source kind, and distinguishes empty 
       }
       return [...extracted];
     },
-    apsClient: server.client("aps"),
+    splitClient: server.client("split"),
     tag: async (_title, claims) => claims.map(() => ["Fox"]),
     classifyIntegrity: async (_source, candidates) =>
       candidates.map(() => ({
@@ -101,21 +101,21 @@ test("HTTP validates input, extracts every source kind, and distinguishes empty 
   assert.equal((await app.inject("/health")).json().active, 0);
 });
 
-test("configuration permits unauthenticated APS and explicitly configured LAN HTTP", () => {
+test("the splitter defaults to Luna on OpenRouter and permits an unauthenticated LAN endpoint", () => {
+  const hosted = parseAtomiserEnv({ OPENROUTER_API_KEY: "test" });
+  assert.equal(hosted.splitBaseUrl, "https://openrouter.ai/api/v1");
+  assert.equal(hosted.splitModel, "openai/gpt-6-luna");
+  assert.equal(hosted.splitApiKeyEnvironmentVariable, "OPENROUTER_API_KEY");
   const config = parseAtomiserEnv({
     OPENROUTER_API_KEY: "test",
-    APS_BASE_URL: "http://192.168.1.20:8092/v1",
+    SPLIT_BASE_URL: "http://192.168.1.20:8092/v1",
+    SPLIT_API_KEY_ENVIRONMENT_VARIABLE: "LOCAL_SPLIT_KEY",
   });
-  assert.equal(config.apsApiKeyEnvironmentVariable, undefined);
-  assert.equal(config.apsBaseUrl, "http://192.168.1.20:8092/v1");
+  assert.equal(config.splitApiKeyEnvironmentVariable, undefined);
+  assert.equal(config.splitBaseUrl, "http://192.168.1.20:8092/v1");
   assert.equal("corpusBaseUrl" in config, false);
-  assert.equal(
-    parseAtomiserEnv({ OPENROUTER_API_KEY: "test", APS_API_KEY: "secret" })
-      .apsApiKeyEnvironmentVariable,
-    "APS_API_KEY",
-  );
   assert.throws(() =>
-    parseAtomiserEnv({ OPENROUTER_API_KEY: "test", APS_BASE_URL: "file:///tmp/model" }),
+    parseAtomiserEnv({ OPENROUTER_API_KEY: "test", SPLIT_BASE_URL: "file:///tmp/model" }),
   );
 });
 

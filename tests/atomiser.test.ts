@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseApsPropositions } from "../src/agents/parse-propositions.js";
+import { parsePropositions } from "../src/agents/parse-propositions.js";
 import { assembleFraming } from "../src/domain/framing.js";
 import {
   acceptsIntegrityProbability,
@@ -9,31 +9,31 @@ import {
   passesIntegrity,
 } from "../src/domain/integrity.js";
 
-test("parseApsPropositions collects bullets and skips the streamed </s> echo", () => {
+test("parsePropositions collects bullets and skips the streamed </s> echo", () => {
   const response =
     "PROPOSITIONS:\n<s>\n- Platoon won four Oscars.\n</s>\n- Oliver Stone directed it.\n</s>\n\n- </s>";
-  const parsed = parseApsPropositions(response);
+  const parsed = parsePropositions(response);
   assert.deepEqual(
     parsed.items.map((item) => item.proposition),
     ["Platoon won four Oscars.", "Oliver Stone directed it."],
   );
 });
 
-test("parseApsPropositions tolerates a plain bullet reply without <s> noise", () => {
-  const parsed = parseApsPropositions("PROPOSITIONS:\n\n- Only one.");
+test("parsePropositions tolerates a plain bullet reply without <s> noise", () => {
+  const parsed = parsePropositions("PROPOSITIONS:\n\n- Only one.");
   assert.deepEqual(
     parsed.items.map((item) => item.proposition),
     ["Only one."],
   );
 });
 
-test("APS distinguishes an empty proposition list from malformed output and has no count cap", () => {
-  assert.deepEqual(parseApsPropositions("PROPOSITIONS:\n"), { items: [] });
+test("the splitter parser distinguishes an empty proposition list from malformed output and has no count cap", () => {
+  assert.deepEqual(parsePropositions("PROPOSITIONS:\n"), { items: [] });
   for (const response of ["", "Sorry, unavailable.", "PROPOSITIONS:\n-", "- Fact.\ntruncated"]) {
-    assert.throws(() => parseApsPropositions(response), /APS/u);
+    assert.throws(() => parsePropositions(response), /splitter/u);
   }
   assert.equal(
-    parseApsPropositions(Array.from({ length: 205 }, (_, i) => `- Fact ${i}.`).join("\n")).items
+    parsePropositions(Array.from({ length: 205 }, (_, i) => `- Fact ${i}.`).join("\n")).items
       .length,
     205,
   );
