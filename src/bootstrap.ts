@@ -48,7 +48,7 @@ export const bootstrapAtomiser = async (config: AtomiserConfig): Promise<Atomise
       classifyFraming,
       tag: tagger.tag,
     },
-    { ledgerPath: config.ledgerPath },
+    { persist: config.ledgerPath !== undefined },
   );
   return { pipeline, ledgerPath: config.ledgerPath, close: tagger.close };
 };

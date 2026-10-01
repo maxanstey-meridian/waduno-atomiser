@@ -1,9 +1,18 @@
 import { spawn } from "node:child_process";
 import { z } from "zod";
-import type {
-  ClaimExtractor,
-  ClaimExtractorEndpoint,
-} from "../application/ports/claim-extractor.js";
+import type { ClaimExtractor } from "../application/ports/claim-extractor.js";
+
+/** Where ClaimExtractor's prompt is sent: the local fine-tune, or a hosted model given the
+ *  same Orbitals prompt. The stage and its output are the same either way. */
+export type ClaimExtractorEndpoint = {
+  readonly baseUrl: string;
+  readonly model: string;
+  /** Name of the variable holding the endpoint's key. */
+  readonly apiKeyVariable: string;
+  /** Sent only to hosted reasoning models; the local fine-tune takes no reasoning field. */
+  readonly reasoningEffort: "minimal" | "low" | "medium" | "high" | null;
+  readonly timeoutMilliseconds: number;
+};
 
 const Response = z.strictObject({
   claims: z.array(z.strictObject({ content: z.string().trim().min(1) })),

@@ -26,8 +26,8 @@ score.** The initial proposition is the extracted claim itself; for split
 children, meaning preservation is checked against their parent.
 
 All five checks must pass. A claim that fails only the atomicity check is split
-into propositions by a hosted model (Luna, thinking off) asked for [Gemma-APS]'s
-output format; each child is checked again and failed children are rejected. Any other failure rejects the claim.
+into propositions by a hosted model (Luna, thinking off); each child is checked
+again and failed children are rejected. Any other failure rejects the claim.
 
 Jev then classifies each retained claim's world, epistemic and temporal framing.
 Fastino's [GLiNER 2.5] extracts entities using the claim and source title. Atoms
@@ -56,7 +56,8 @@ in [src/contracts](src/contracts) and are exported through the package's
 pipeline stages handle integrity, framing, tagging and finalisation.
 
 ClaimExtractor runs through a Python adapter against an OpenAI-compatible model
-endpoint; the example configuration uses local oMLX. Splitting and Jev use OpenRouter. [GLiNER] runs locally in a Python
+endpoint: the local fine-tune by default, or a hosted model given the same prompt.
+Splitting and Jev use OpenRouter. [GLiNER] runs locally in a Python
 subprocess kept warm between requests. The host and CLI close it on shutdown.
 
 ## Getting started
@@ -76,7 +77,13 @@ pnpm setup:gliner
 
 Setup creates `.venv`, installs the Python dependencies for GLiNER and
 ClaimExtractor, and downloads the pinned GLiNER weights. Set `OPENROUTER_API_KEY`
-in `.env`. The local ClaimExtractor endpoint key is optional.
+and `CLAIM_EXTRACTOR_API_KEY` in `.env`; startup fails if either key is missing.
+
+To send ClaimExtractor's prompt to a hosted model instead of the local fine-tune,
+set `CLAIM_EXTRACTOR_BASE_URL`, `CLAIM_EXTRACTOR_MODEL`,
+`CLAIM_EXTRACTOR_API_KEY_ENVIRONMENT_VARIABLE` and `CLAIM_EXTRACTOR_REASONING_EFFORT`
+together. For example, `https://openrouter.ai/api/v1`, `openai/gpt-6-luna`,
+`OPENROUTER_API_KEY` and `minimal`.
 
 ### Configuration
 
@@ -87,13 +94,13 @@ unless noted otherwise.
 | ---------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------- |
 | `CLAIM_EXTRACTOR_BASE_URL`                     | `http://127.0.0.1:8092/v1`          | OpenAI-compatible ClaimExtractor endpoint.                                                |
 | `CLAIM_EXTRACTOR_MODEL`                        | `claim-extractor-4B-q-2605-oQ8-MTP` | Model name exposed by the ClaimExtractor server.                                          |
-| `CLAIM_EXTRACTOR_API_KEY_ENVIRONMENT_VARIABLE` | `APS_API_KEY`                       | Name of the variable holding the optional endpoint key.                                   |
+| `CLAIM_EXTRACTOR_API_KEY_ENVIRONMENT_VARIABLE` | `CLAIM_EXTRACTOR_API_KEY`           | Name of the variable holding the ClaimExtractor endpoint key.                             |
 | `CLAIM_EXTRACTOR_REQUEST_TIMEOUT_MILLISECONDS` | `180000`                            | ClaimExtractor request timeout.                                                           |
 | `CLAIM_EXTRACTOR_REASONING_EFFORT`             | unset                               | Reasoning effort for a hosted model given the same prompt; unset for the local fine-tune. |
-| `APS_API_KEY`                                  | Optional; example uses `local`      | Local ClaimExtractor endpoint key. Leave blank for an unauthenticated endpoint.           |
+| `CLAIM_EXTRACTOR_API_KEY`                      | Required; example uses `local`      | Local ClaimExtractor endpoint key.                                                        |
 | `SPLIT_BASE_URL`                               | `https://openrouter.ai/api/v1`      | OpenAI-compatible endpoint that splits non-atomic claims.                                 |
 | `SPLIT_MODEL`                                  | `openai/gpt-6-luna`                 | Splitting model; asked with reasoning effort `none`.                                      |
-| `SPLIT_API_KEY_ENVIRONMENT_VARIABLE`           | `OPENROUTER_API_KEY`                | Name of the variable holding the splitting endpoint key.                                  |
+| `SPLIT_API_KEY_ENVIRONMENT_VARIABLE`           | `OPENROUTER_API_KEY`                | Name of the variable holding the required splitting endpoint key.                         |
 | `SPLIT_REQUEST_TIMEOUT_MILLISECONDS`           | `30000`                             | Splitting request timeout.                                                                |
 | `SPLIT_IDLE_TIMEOUT_MILLISECONDS`              | `30000`                             | Splitting stream idle timeout.                                                            |
 | `OPENROUTER_API_KEY`                           | Required                            | Jev key.                                                                                  |
@@ -186,7 +193,6 @@ The Wikipedia-derived examples retain their CC BY-SA 4.0 licence; see
 [example attribution](examples/corpus/SOURCES.md).
 
 [ClaimExtractor-2605]: https://huggingface.co/principled-intelligence/claim-extractor-4B-q-2605
-[Gemma-APS]: https://huggingface.co/google/gemma-7b-aps-it
 [Jev]: https://openrouter.ai/typesafe/jev-1.13
 [GLiNER]: https://github.com/fastino-ai/GLiNER2
 [GLiNER 2.5]: https://huggingface.co/fastino/gliner2.5-base-v1

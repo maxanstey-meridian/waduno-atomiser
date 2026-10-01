@@ -1,15 +1,15 @@
 import { z } from "zod";
-export const DiscoveryOutput = z.strictObject({
+export const SplitOutput = z.strictObject({
   items: z.array(z.strictObject({ proposition: z.string().min(1) })).readonly(),
 });
-export type DiscoveryOutput = z.infer<typeof DiscoveryOutput>;
+export type SplitOutput = z.infer<typeof SplitOutput>;
 
-export const parsePropositions = (response: string): DiscoveryOutput => {
+export const parsePropositions = (response: string): SplitOutput => {
   const items: { proposition: string }[] = [];
   let header = false;
   for (const raw of response.split("\n")) {
     const line = raw.trim();
-    if (line === "" || line === "<s>" || line === "</s>" || line === "- </s>") {
+    if (line === "") {
       continue;
     }
     if (line === "PROPOSITIONS:" && !header && items.length === 0) {

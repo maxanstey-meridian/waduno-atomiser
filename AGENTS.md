@@ -10,8 +10,8 @@ Domain owns pure decision types, integrity thresholds and split eligibility; pip
 and consumes the public source/output schemas directly. Contracts never import
 Domain or pipeline internals. Application owns narrow model ports, with no
 contracts or Tandem imports. Pipeline owns the ClaimExtractor graph and its
-integrity, framing, tagging and finalisation stages; infrastructure implements model ports. Bootstrap's bootstrapAtomiser returns an explicit AtomiserRuntime
-{ pipeline: Pipeline<AtomisationState>, close }. The graph factory lives in pipeline/;
+integrity, framing, tagging and finalisation stages; infrastructure implements model ports. Bootstrap's async bootstrapAtomiser resolves to an explicit AtomiserRuntime
+{ pipeline: Pipeline<AtomisationState>, ledgerPath?, close }. The graph factory lives in pipeline/;
 HTTP accepts the pipeline directly. Agent definitions live in agents/ and declare
 explicit input/output types; state types are inferred from their owning Zod schemas. Candidate records carry their own
 assessment and enrichment under a discriminated working phase. Claim resolution takes one
@@ -25,9 +25,8 @@ contract change is a breaking release, and consumers migrate their stored atoms.
 
 ## Model/runtime constraints
 
-- Gemma-APS takes plain user messages only. Any response_format destroys output.
-- The APS split agent explicitly requests reasoning effort `none`.
-- ClaimExtractor uses the pinned Orbitals prompt through its Python adapter and the local oMLX model.
+- The split agent explicitly requests reasoning effort `none` and parses raw text, not response_format.
+- ClaimExtractor uses the pinned Orbitals prompt through its Python adapter, sent to the local fine-tune or a hosted model.
 - Downstream stages require claims; missing claims fail rather than use propositions.
 - Deduplication rejections are unscored; only integrity rejections carry scores.
 - Send selected text unchanged; no sentence segmenter or source-kind exclusion.
@@ -35,12 +34,11 @@ contract change is a breaking release, and consumers migrate their stored atoms.
 - Operational failures fail the run; do not replace failed transformations with
   unchanged claims, empty results or synthetic probabilities.
 - Tandem raw parse receives raw text; validateFor/apply receive parsed candidates.
-- Skip streamed </s> wrapper bullets in the APS parser.
 - Pipeline state uses canonical Zod schemas; never mirror them.
 - Every route has a meaningful nonblank label.
 - Graphs capture configuration only. Stages read source/signal from execution.
 - Native Tandem max owns child concurrency; do not add striped worker pools.
-- The ClaimExtractor graph checks extracted claims with Jev first. All five checks must pass; only atomicity failures that pass the other integrity checks go to APS splitting; split children are checked against their parent by Jev and failed claims are rejected.
+- The ClaimExtractor graph checks extracted claims with Jev first. All five checks must pass; only atomicity failures that pass the other integrity checks go to splitting; split children are checked against their parent by Jev and failed claims are rejected.
 - Claim resolution runs at most six original-candidate sequences per source; child work
   remains serial within each branch. Merge in input order and assign source-wide
   split-child identities there, never from concurrent shared mutation.

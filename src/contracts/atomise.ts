@@ -85,8 +85,8 @@ const AtomFields = z.strictObject({
 });
 
 export const AtomDraft = AtomFields.extend({
-  framing: AtomFraming.nullable().optional(),
-  scores: IntegrityScores.optional(),
+  framing: AtomFraming,
+  scores: IntegrityScores,
   recovery: RecoveryKind.optional(),
 });
 export type AtomDraft = z.infer<typeof AtomDraft>;

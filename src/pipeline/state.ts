@@ -5,17 +5,13 @@ import {
   AcceptedCandidate,
   AssessedCandidate,
   CanonicalCandidate,
-  DiscoveredCandidate,
   FramedCandidate,
   TaggedCandidate,
 } from "./candidate.js";
 import { CandidateOutcome } from "./outcomes.js";
 
 export const WorkingCandidates = z.discriminatedUnion("phase", [
-  z.strictObject({
-    phase: z.literal("discovered"),
-    items: z.array(DiscoveredCandidate).readonly(),
-  }),
+  z.strictObject({ phase: z.literal("pending"), items: z.array(z.never()).readonly() }),
   z.strictObject({
     phase: z.literal("canonicalised"),
     items: z.array(CanonicalCandidate).readonly(),
@@ -37,7 +33,7 @@ export type AtomisationState = z.infer<typeof AtomisationState>;
 
 export const initialAtomisationState = (source: SourceEnvelope): AtomisationState => ({
   source,
-  working: { phase: "discovered", items: [] },
+  working: { phase: "pending", items: [] },
   outcomes: [],
   output: null,
 });

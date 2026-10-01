@@ -1,11 +1,7 @@
 import { taskAgent, type TaskAgent, type ChatClient } from "@maxanstey-meridian/tandem";
 import { z } from "zod";
-import { DiscoveryOutput, parsePropositions } from "./parse-propositions.js";
+import { SplitOutput, parsePropositions } from "./parse-propositions.js";
 
-/**
- * Asks for a claim's atomic propositions in Gemma-APS's output format, which a general model
- * produces only when told to.
- */
 export const SPLIT_INSTRUCTIONS =
   "Split the user's sentence into its atomic propositions: each a standalone, self-contained " +
   "factual statement that keeps the original wording where possible and repeats names instead " +
@@ -13,13 +9,13 @@ export const SPLIT_INSTRUCTIONS =
   "starting with '- '. Nothing else. Plain text: no markdown, and keep the sentence's own " +
   "quotation marks.";
 
-export const createSplitAgent = (client: ChatClient): TaskAgent<string, DiscoveryOutput> =>
-  taskAgent<string, DiscoveryOutput>({
+export const createSplitAgent = (client: ChatClient): TaskAgent<string, SplitOutput> =>
+  taskAgent<string, SplitOutput>({
     id: "re-split",
     instructions: SPLIT_INSTRUCTIONS,
     client,
     input: z.string(),
-    result: DiscoveryOutput,
+    result: SplitOutput,
     reasoning: { effort: "none" },
     temperature: 0,
     maxOutputTokens: 2048,

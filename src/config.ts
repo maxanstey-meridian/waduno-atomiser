@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ClaimExtractorEndpoint } from "./application/ports/claim-extractor.js";
+import type { ClaimExtractorEndpoint } from "./infrastructure/claim-extractor.js";
 
 const positiveInteger = (defaultValue: number) =>
   z.coerce.number().int().positive().default(defaultValue);
@@ -25,8 +25,6 @@ const modelBaseUrl = z
   })
   .transform((value) => value.replace(/\/$/u, ""));
 
-// Validate the environment-facing names once, then hand the rest of the app a
-// typed config. Secret variable names are retained where Tandem resolves the key.
 const EnvironmentConfig = z.object({
   SPLIT_BASE_URL: modelBaseUrl.default("https://openrouter.ai/api/v1"),
   SPLIT_MODEL: z.string().trim().min(1).default("openai/gpt-6-luna"),
@@ -38,7 +36,11 @@ const EnvironmentConfig = z.object({
   SPLIT_IDLE_TIMEOUT_MILLISECONDS: positiveInteger(30_000),
   CLAIM_EXTRACTOR_BASE_URL: modelBaseUrl.default("http://127.0.0.1:8092/v1"),
   CLAIM_EXTRACTOR_MODEL: z.string().trim().min(1).default("claim-extractor-4B-q-2605-oQ8-MTP"),
-  CLAIM_EXTRACTOR_API_KEY_ENVIRONMENT_VARIABLE: z.string().trim().min(1).default("APS_API_KEY"),
+  CLAIM_EXTRACTOR_API_KEY_ENVIRONMENT_VARIABLE: z
+    .string()
+    .trim()
+    .min(1)
+    .default("CLAIM_EXTRACTOR_API_KEY"),
   CLAIM_EXTRACTOR_REQUEST_TIMEOUT_MILLISECONDS: positiveInteger(180_000),
   CLAIM_EXTRACTOR_REASONING_EFFORT: z.enum(["minimal", "low", "medium", "high"]).optional(),
 });
@@ -54,7 +56,7 @@ const requiredApiKey = (environment: NodeJS.ProcessEnv, name: string, purpose: s
 export type AtomiserConfig = {
   readonly splitBaseUrl: string;
   readonly splitModel: string;
-  readonly splitApiKeyEnvironmentVariable?: string;
+  readonly splitApiKeyEnvironmentVariable: string;
   readonly openRouterApiKey: string;
   readonly glinerPython: string;
   readonly glinerModelPath: string;
@@ -64,20 +66,19 @@ export type AtomiserConfig = {
   readonly claimExtractor: ClaimExtractorEndpoint;
 };
 
-// Entrypoints pass their environment here. Defaults and required-key checks are
-// resolved before any client is constructed; no downstream code needs to repeat them.
+// Tandem and the ClaimExtractor subprocess read their keys by variable name, so only
+// the names travel in config. Checking the keys here fails startup, not the first request.
 export const parseAtomiserEnv = (environment: NodeJS.ProcessEnv = process.env): AtomiserConfig => {
   const value = EnvironmentConfig.parse(environment);
-  const splitApiKeyEnvironmentVariable = value.SPLIT_API_KEY_ENVIRONMENT_VARIABLE;
   const openRouterApiKey =
     value.OPENROUTER_API_KEY ??
     requiredApiKey(environment, "OPENROUTER_API_KEY", "Jev classification");
+  requiredApiKey(environment, value.SPLIT_API_KEY_ENVIRONMENT_VARIABLE, "claim splitting");
+  requiredApiKey(environment, value.CLAIM_EXTRACTOR_API_KEY_ENVIRONMENT_VARIABLE, "ClaimExtractor");
   return {
     splitBaseUrl: value.SPLIT_BASE_URL,
     splitModel: value.SPLIT_MODEL,
-    ...(environment[splitApiKeyEnvironmentVariable]?.trim()
-      ? { splitApiKeyEnvironmentVariable }
-      : {}),
+    splitApiKeyEnvironmentVariable: value.SPLIT_API_KEY_ENVIRONMENT_VARIABLE,
     openRouterApiKey,
     glinerPython: ".venv/bin/python",
     glinerModelPath: value.GLINER_MODEL_PATH,

@@ -21,39 +21,42 @@ const source = SourceEnvelope.parse(
 test("HTTP validates input, extracts every source kind, and distinguishes empty and failed runs", async (t) => {
   let extracted: readonly string[] | Error = ["The fox jumps."];
   const server = await chatServer(t, () => assert.fail("Accepted claims must not be split"));
-  const pipeline = createClaimExtractorAtomisationPipeline({
-    extractClaims: async () => {
-      if (extracted instanceof Error) {
-        throw extracted;
-      }
-      return [...extracted];
+  const pipeline = createClaimExtractorAtomisationPipeline(
+    {
+      extractClaims: async () => {
+        if (extracted instanceof Error) {
+          throw extracted;
+        }
+        return [...extracted];
+      },
+      splitClient: server.client("split"),
+      tag: async (_title, claims) => claims.map(() => ["Fox"]),
+      classifyIntegrity: async (_source, candidates) =>
+        candidates.map(() => ({
+          supported: true,
+          meaning_preserved: true,
+          standalone: true,
+          context_complete: true,
+          atomic: true,
+          probabilities: {
+            supported: 1,
+            meaning_preserved: 1,
+            standalone: 1,
+            context_complete: 1,
+            atomic: 1,
+          },
+          mean: 1,
+          reason: "",
+        })),
+      classifyFraming: async (_source, claims) =>
+        claims.map(() => ({
+          world: { layer: "real_world" },
+          epistemic: { source_commitment: "asserted", modal_frame: "actual" },
+          temporal: { instability: "stable" },
+        })),
     },
-    splitClient: server.client("split"),
-    tag: async (_title, claims) => claims.map(() => ["Fox"]),
-    classifyIntegrity: async (_source, candidates) =>
-      candidates.map(() => ({
-        supported: true,
-        meaning_preserved: true,
-        standalone: true,
-        context_complete: true,
-        atomic: true,
-        probabilities: {
-          supported: 1,
-          meaning_preserved: 1,
-          standalone: 1,
-          context_complete: 1,
-          atomic: 1,
-        },
-        mean: 1,
-        reason: "",
-      })),
-    classifyFraming: async (_source, claims) =>
-      claims.map(() => ({
-        world: { layer: "real_world" },
-        epistemic: { source_commitment: "asserted", modal_frame: "actual" },
-        temporal: { instability: "stable" },
-      })),
-  });
+    { persist: false },
+  );
   const { app } = createAtomiserServer(pipeline, {
     concurrency: 1,
     timeoutMs: 5000,
@@ -101,42 +104,54 @@ test("HTTP validates input, extracts every source kind, and distinguishes empty 
   assert.equal((await app.inject("/health")).json().active, 0);
 });
 
-test("the splitter defaults to Luna on OpenRouter and permits an unauthenticated LAN endpoint", () => {
-  const hosted = parseAtomiserEnv({ OPENROUTER_API_KEY: "test" });
-  assert.equal(hosted.splitBaseUrl, "https://openrouter.ai/api/v1");
-  assert.equal(hosted.splitModel, "openai/gpt-6-luna");
-  assert.equal(hosted.splitApiKeyEnvironmentVariable, "OPENROUTER_API_KEY");
-  const config = parseAtomiserEnv({
-    OPENROUTER_API_KEY: "test",
-    SPLIT_BASE_URL: "http://192.168.1.20:8092/v1",
-    SPLIT_API_KEY_ENVIRONMENT_VARIABLE: "LOCAL_SPLIT_KEY",
-  });
-  assert.equal(config.splitApiKeyEnvironmentVariable, undefined);
-  assert.equal(config.splitBaseUrl, "http://192.168.1.20:8092/v1");
+const keys = { OPENROUTER_API_KEY: "jev-key", CLAIM_EXTRACTOR_API_KEY: "extractor-key" };
+
+test("the splitter defaults to Luna on OpenRouter and accepts only HTTP endpoints", () => {
+  const config = parseAtomiserEnv(keys);
+  assert.equal(config.splitBaseUrl, "https://openrouter.ai/api/v1");
+  assert.equal(config.splitModel, "openai/gpt-6-luna");
+  assert.equal(config.splitApiKeyEnvironmentVariable, "OPENROUTER_API_KEY");
   assert.equal("corpusBaseUrl" in config, false);
-  assert.throws(() =>
-    parseAtomiserEnv({ OPENROUTER_API_KEY: "test", SPLIT_BASE_URL: "file:///tmp/model" }),
-  );
+  assert.throws(() => parseAtomiserEnv({ ...keys, SPLIT_BASE_URL: "file:///tmp/model" }));
 });
 
-test("configuration requires only the Jev key and defaults the ClaimExtractor model", () => {
-  const config = parseAtomiserEnv({
-    OPENROUTER_API_KEY: "jev-key",
-  });
+test("configuration defaults the ClaimExtractor model and passes reasoning effort through", () => {
+  const config = parseAtomiserEnv(keys);
   assert.equal(config.openRouterApiKey, "jev-key");
   assert.deepEqual(config.claimExtractor, {
     baseUrl: "http://127.0.0.1:8092/v1",
     model: "claim-extractor-4B-q-2605-oQ8-MTP",
-    apiKeyVariable: "APS_API_KEY",
+    apiKeyVariable: "CLAIM_EXTRACTOR_API_KEY",
     reasoningEffort: null,
     timeoutMilliseconds: 180_000,
   });
   assert.equal(
-    parseAtomiserEnv({ OPENROUTER_API_KEY: "k", CLAIM_EXTRACTOR_REASONING_EFFORT: "minimal" })
-      .claimExtractor.reasoningEffort,
+    parseAtomiserEnv({ ...keys, CLAIM_EXTRACTOR_REASONING_EFFORT: "minimal" }).claimExtractor
+      .reasoningEffort,
     "minimal",
   );
-  assert.throws(() => parseAtomiserEnv({}), /OPENROUTER_API_KEY is required/u);
+});
+
+test("startup fails when any model key is missing", () => {
+  assert.throws(
+    () => parseAtomiserEnv({ CLAIM_EXTRACTOR_API_KEY: "extractor-key" }),
+    /OPENROUTER_API_KEY is required/u,
+  );
+  assert.throws(
+    () => parseAtomiserEnv({ ...keys, SPLIT_API_KEY_ENVIRONMENT_VARIABLE: "SPLIT_KEY" }),
+    /SPLIT_KEY is required for claim splitting/u,
+  );
+  assert.throws(
+    () => parseAtomiserEnv({ OPENROUTER_API_KEY: "jev-key", CLAIM_EXTRACTOR_API_KEY: " " }),
+    /CLAIM_EXTRACTOR_API_KEY is required for ClaimExtractor/u,
+  );
+  assert.equal(
+    parseAtomiserEnv({
+      OPENROUTER_API_KEY: "jev-key",
+      CLAIM_EXTRACTOR_API_KEY_ENVIRONMENT_VARIABLE: "OPENROUTER_API_KEY",
+    }).claimExtractor.apiKeyVariable,
+    "OPENROUTER_API_KEY",
+  );
 });
 
 test(

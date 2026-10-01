@@ -100,7 +100,7 @@ const nodeFromPipeline = (
       tag: async () => assert.fail("Unexpected tagging call"),
       ...dependencies,
     },
-    { ledgerPath },
+    { persist: ledgerPath !== undefined },
   );
   const node = graph.nodes.find((node) => node.id === id);
   assert(node?.kind === "stage" || node?.kind === "collection");
@@ -157,7 +157,7 @@ test(
           ),
         classifyFraming: async (_source, claims) => claims.map(() => stable),
       },
-      { ledgerPath },
+      { persist: true },
     );
     assert.equal("atomize" in graph, false);
     const results = await Promise.all(
@@ -309,25 +309,31 @@ test("extraction receives the bounded source and the splitter receives the faili
     return "PROPOSITIONS:\n- Ayrton Senna won by 0.2 seconds.\n- Mr. Burns paid $3 million.";
   });
   const bounded = { ...source, text, context };
-  const graph = createClaimExtractorAtomisationPipeline({
-    extractClaims: async (extractSource) => {
-      assert.deepEqual(extractSource, bounded);
-      return [compound];
+  const graph = createClaimExtractorAtomisationPipeline(
+    {
+      extractClaims: async (extractSource) => {
+        assert.deepEqual(extractSource, bounded);
+        return [compound];
+      },
+      splitClient: server.client("split"),
+      classifyIntegrity: async (integritySource, candidates) => {
+        assert.deepEqual(integritySource.context, context);
+        return candidates.map((candidate) =>
+          decision(candidate.claim === compound ? { atomic: false, reason: "compound" } : {}),
+        );
+      },
+      classifyFraming: async (framingSource, claims) => {
+        assert.deepEqual(framingSource.context, context);
+        assert.deepEqual(claims, [
+          "Ayrton Senna won by 0.2 seconds.",
+          "Mr. Burns paid $3 million.",
+        ]);
+        return claims.map(() => stable);
+      },
+      tag: async (_title, claims) => claims.map(() => []),
     },
-    splitClient: server.client("split"),
-    classifyIntegrity: async (integritySource, candidates) => {
-      assert.deepEqual(integritySource.context, context);
-      return candidates.map((candidate) =>
-        decision(candidate.claim === compound ? { atomic: false, reason: "compound" } : {}),
-      );
-    },
-    classifyFraming: async (framingSource, claims) => {
-      assert.deepEqual(framingSource.context, context);
-      assert.deepEqual(claims, ["Ayrton Senna won by 0.2 seconds.", "Mr. Burns paid $3 million."]);
-      return claims.map(() => stable);
-    },
-    tag: async (_title, claims) => claims.map(() => []),
-  });
+    { persist: false },
+  );
   const result = await run(graph, initialAtomisationState(bounded));
   assert.equal(result.succeeded, true, result.summary ?? "failed");
   assert.equal(server.requests.length, 1);
@@ -1023,13 +1029,16 @@ test("finalisation keeps each survivor's scores, framing and tags when candidate
 });
 
 test("the source pipeline exposes seven processing nodes and one terminal", () => {
-  const graph = createClaimExtractorAtomisationPipeline({
-    extractClaims: async () => [],
-    splitClient: unusedClient,
-    classifyIntegrity: async () => [],
-    classifyFraming: async () => assert.fail("No execution"),
-    tag: async () => [],
-  });
+  const graph = createClaimExtractorAtomisationPipeline(
+    {
+      extractClaims: async () => [],
+      splitClient: unusedClient,
+      classifyIntegrity: async () => [],
+      classifyFraming: async () => assert.fail("No execution"),
+      tag: async () => [],
+    },
+    { persist: false },
+  );
   const inspection = inspectPipeline(graph);
   assert.deepEqual(
     inspection.nodes.map((node) => [node.id, node.kind]),

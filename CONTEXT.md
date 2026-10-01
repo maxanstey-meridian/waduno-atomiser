@@ -4,9 +4,9 @@ The corpus owns source selection, provenance, atom persistence, jobs and retries
 This package accepts a source-neutral envelope and returns one transformation.
 It has no corpus client or reverse callback. See README.md for setup and operation.
 
-ClaimExtractor owns extraction; Gemma-APS owns splitting. Send the selected text
-unchanged to ClaimExtractor and a failing claim unchanged through APS's
-plain-user/raw-output interface; never add sentence segmentation. Source kind
+ClaimExtractor owns extraction; a hosted split agent owns splitting. Send the selected
+text unchanged to ClaimExtractor and a failing claim unchanged to the split agent as
+a plain user message with raw-text output; never add sentence segmentation. Source kind
 does not filter content. Deduplication removes exact claim strings only.
 
 All five independent Jev integrity checks must pass at 0.6. Standalone sees the
@@ -16,12 +16,12 @@ parent and rejected if they fail. There is no repair and no recursive splitting.
 
 Domain owns the acceptance threshold and split eligibility. Application ports
 own their narrow source-context inputs; the pipeline assembles public output.
-Its working phase carries discovered, canonicalised, assessed, accepted, framed
+Its working phase carries pending, canonicalised, assessed, accepted, framed
 or tagged candidate records, each carrying its own metadata.
 All downstream stages require a nonblank canonical claim. Deduplication rejections
 use their own stage and omit scores; they never received an integrity verdict.
-The APS split agent explicitly requests reasoning effort `none`.
-Model roles are ClaimExtractor for extraction, APS for splitting, and Jev for
+The split agent explicitly requests reasoning effort `none`.
+Model roles are ClaimExtractor for extraction, the split agent for splitting, and Jev for
 integrity/framing; GLiNER provides entity text, type and confidence separately.
 Claim resolution uses native Tandem concurrency, bounded at six per source run.
 Split branches keep their child work serial and their results isolated.

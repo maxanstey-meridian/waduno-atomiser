@@ -44,45 +44,48 @@ test("ClaimExtractor claims split through the splitter and reach Jev and GLiNER"
   });
   const checked: string[] = [];
   const tagged: string[] = [];
-  const graph = createClaimExtractorAtomisationPipeline({
-    extractClaims: async () => [
-      "The fox jumps and the dog sleeps.",
-      "The fox jumps and the dog sleeps.",
-    ],
-    splitClient: splitter.client("split"),
-    classifyIntegrity: async (_source, candidates) => {
-      checked.push(...candidates.map((candidate) => candidate.claim));
-      return candidates.map((candidate) =>
-        candidate.claim === "The fox jumps and the dog sleeps."
-          ? {
-              ...accepted,
-              atomic: false,
-              probabilities: { ...accepted.probabilities, atomic: 0.1 },
-              mean: 0.82,
-              reason: "compound",
-            }
-          : candidate.claim === "The dog sleeps."
+  const graph = createClaimExtractorAtomisationPipeline(
+    {
+      extractClaims: async () => [
+        "The fox jumps and the dog sleeps.",
+        "The fox jumps and the dog sleeps.",
+      ],
+      splitClient: splitter.client("split"),
+      classifyIntegrity: async (_source, candidates) => {
+        checked.push(...candidates.map((candidate) => candidate.claim));
+        return candidates.map((candidate) =>
+          candidate.claim === "The fox jumps and the dog sleeps."
             ? {
                 ...accepted,
-                supported: false,
-                probabilities: { ...accepted.probabilities, supported: 0.1 },
+                atomic: false,
+                probabilities: { ...accepted.probabilities, atomic: 0.1 },
                 mean: 0.82,
-                reason: "unsupported",
+                reason: "compound",
               }
-            : accepted,
-      );
+            : candidate.claim === "The dog sleeps."
+              ? {
+                  ...accepted,
+                  supported: false,
+                  probabilities: { ...accepted.probabilities, supported: 0.1 },
+                  mean: 0.82,
+                  reason: "unsupported",
+                }
+              : accepted,
+        );
+      },
+      classifyFraming: async (_source, claims) =>
+        claims.map(() => ({
+          world: { layer: "real_world" },
+          epistemic: { source_commitment: "asserted", modal_frame: "actual" },
+          temporal: { instability: "stable" },
+        })),
+      tag: async (_title, claims) => {
+        tagged.push(...claims);
+        return claims.map(() => []);
+      },
     },
-    classifyFraming: async (_source, claims) =>
-      claims.map(() => ({
-        world: { layer: "real_world" },
-        epistemic: { source_commitment: "asserted", modal_frame: "actual" },
-        temporal: { instability: "stable" },
-      })),
-    tag: async (_title, claims) => {
-      tagged.push(...claims);
-      return claims.map(() => []);
-    },
-  });
+    { persist: false },
+  );
   const result = await run(graph, initialAtomisationState(source));
   assert.equal(result.succeeded, true, result.summary ?? "failed");
   assert.deepEqual(checked, [
@@ -104,52 +107,58 @@ test("ClaimExtractor claims split through the splitter and reach Jev and GLiNER"
 });
 
 test("an empty ClaimExtractor result completes without splitting or classifying", async () => {
-  const graph = createClaimExtractorAtomisationPipeline({
-    extractClaims: async () => [],
-    splitClient: {
-      kind: "openai-compatible",
-      version: 1,
-      endpoint: "http://127.0.0.1:1/v1",
-      model: "unused",
-      wireApi: "completions",
-      verifyModel: false,
+  const graph = createClaimExtractorAtomisationPipeline(
+    {
+      extractClaims: async () => [],
+      splitClient: {
+        kind: "openai-compatible",
+        version: 1,
+        endpoint: "http://127.0.0.1:1/v1",
+        model: "unused",
+        wireApi: "completions",
+        verifyModel: false,
+      },
+      classifyIntegrity: async () => assert.fail("Unexpected Jev call"),
+      classifyFraming: async () => assert.fail("Unexpected framing call"),
+      tag: async () => assert.fail("Unexpected GLiNER call"),
     },
-    classifyIntegrity: async () => assert.fail("Unexpected Jev call"),
-    classifyFraming: async () => assert.fail("Unexpected framing call"),
-    tag: async () => assert.fail("Unexpected GLiNER call"),
-  });
+    { persist: false },
+  );
   const result = await run(graph, initialAtomisationState(source));
   assert.equal(result.succeeded, true, result.summary ?? "failed");
   assert.equal(result.state.output?.status, "no_propositions");
 });
 
 test("a claim failing a check other than atomicity is rejected without splitting", async () => {
-  const graph = createClaimExtractorAtomisationPipeline({
-    extractClaims: async () => ["The fox jumps and the dog sleeps."],
-    splitClient: {
-      kind: "openai-compatible",
-      version: 1,
-      endpoint: "http://127.0.0.1:1/v1",
-      model: "unused",
-      wireApi: "completions",
-      verifyModel: false,
-    },
-    classifyIntegrity: async () => [
-      {
-        ...accepted,
-        atomic: false,
-        standalone: false,
-        probabilities: { ...accepted.probabilities, atomic: 0.1, standalone: 0.2 },
-        mean: 0.66,
-        reason: "compound and not standalone",
+  const graph = createClaimExtractorAtomisationPipeline(
+    {
+      extractClaims: async () => ["The fox jumps and the dog sleeps."],
+      splitClient: {
+        kind: "openai-compatible",
+        version: 1,
+        endpoint: "http://127.0.0.1:1/v1",
+        model: "unused",
+        wireApi: "completions",
+        verifyModel: false,
       },
-    ],
-    classifyFraming: async (_source, claims) => {
-      assert.deepEqual(claims, []);
-      return [];
+      classifyIntegrity: async () => [
+        {
+          ...accepted,
+          atomic: false,
+          standalone: false,
+          probabilities: { ...accepted.probabilities, atomic: 0.1, standalone: 0.2 },
+          mean: 0.66,
+          reason: "compound and not standalone",
+        },
+      ],
+      classifyFraming: async (_source, claims) => {
+        assert.deepEqual(claims, []);
+        return [];
+      },
+      tag: async () => assert.fail("Unexpected GLiNER call"),
     },
-    tag: async () => assert.fail("Unexpected GLiNER call"),
-  });
+    { persist: false },
+  );
   const result = await run(graph, initialAtomisationState(source));
   assert.equal(result.succeeded, true, result.summary ?? "failed");
   assert.equal(result.state.output?.status, "no_valid_candidates");

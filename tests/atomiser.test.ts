@@ -9,21 +9,13 @@ import {
   passesIntegrity,
 } from "../src/domain/integrity.js";
 
-test("parsePropositions collects bullets and skips the streamed </s> echo", () => {
-  const response =
-    "PROPOSITIONS:\n<s>\n- Platoon won four Oscars.\n</s>\n- Oliver Stone directed it.\n</s>\n\n- </s>";
-  const parsed = parsePropositions(response);
+test("parsePropositions collects bullets after the header", () => {
+  const parsed = parsePropositions(
+    "PROPOSITIONS:\n\n- Platoon won four Oscars.\n- Oliver Stone directed it.",
+  );
   assert.deepEqual(
     parsed.items.map((item) => item.proposition),
     ["Platoon won four Oscars.", "Oliver Stone directed it."],
-  );
-});
-
-test("parsePropositions tolerates a plain bullet reply without <s> noise", () => {
-  const parsed = parsePropositions("PROPOSITIONS:\n\n- Only one.");
-  assert.deepEqual(
-    parsed.items.map((item) => item.proposition),
-    ["Only one."],
   );
 });
 
