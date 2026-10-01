@@ -1,6 +1,6 @@
 {
   "name": "@maxanstey-meridian/waduno-atomiser",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Source content to evidenced atoms.",
   "license": "MIT",
   "repository": {
@@ -9,16 +9,11 @@
   },
   "files": [
     "dist/src",
-    "dist/python",
     "README.md",
     "LICENSE"
   ],
   "type": "module",
   "exports": {
-    ".": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
-    },
     "./contracts": {
       "types": "./dist/src/contracts/atomise.d.ts",
       "import": "./dist/src/contracts/atomise.js"
