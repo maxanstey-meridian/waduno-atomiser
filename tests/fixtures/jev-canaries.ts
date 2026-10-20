@@ -168,7 +168,7 @@ export const integrityCanaries: readonly IntegrityCanary[] = [
   },
   {
     name: "a document the source credits",
-    why: "The source itself attributes the count to the depot log, so stating what the log says adds nothing.",
+    why: "The source itself attributes the arrival to the depot log, so stating what the log says adds nothing.",
     source: "The North Depot log states that three crates arrived on 12 March 2024.",
     proposition: "The North Depot log states that three crates arrived on 12 March 2024.",
     claim: "The North Depot log states that three crates arrived on 12 March 2024.",
