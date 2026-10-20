@@ -23,6 +23,7 @@ class ClaimExtractorContextTest(unittest.TestCase):
         body, output = run_bridge(source, extraction, reasoning_effort="")
         system, user = body["messages"]
         self.assertIn("Do not extract additional claims from the context", system["content"])
+        self.assertIn("not a reply from an assistant", system["content"])
         self.assertIn(json.dumps({"title": source["title"], "context": source["context"]}), user["content"])
         self.assertIn("LAST MESSAGE (ASSISTANT):\n" + source["text"], user["content"])
         self.assertNotIn("reasoning", body, "the local fine-tune is sent no reasoning field")
