@@ -149,6 +149,32 @@ export const integrityCanaries: readonly IntegrityCanary[] = [
     expected: valid,
   },
   {
+    name: "content attributed to the assistant",
+    why: "The source states the delivery itself; presenting it as said by the assistant adds a speech act the source does not contain.",
+    source,
+    proposition:
+      "The assistant states that Mira delivered three red crates to North Depot on 12 March 2024.",
+    claim:
+      "The assistant states that Mira delivered three red crates to North Depot on 12 March 2024.",
+    expected: { ...valid, supported: false },
+  },
+  {
+    name: "an assistant the source credits",
+    why: "The source credits the statement to Tomas, Mira's assistant, so the attribution is the source's own.",
+    source: "Tomas, Mira's assistant, said the crates arrived at North Depot on 12 March 2024.",
+    proposition: "Mira's assistant Tomas said the crates arrived at North Depot on 12 March 2024.",
+    claim: "Mira's assistant Tomas said the crates arrived at North Depot on 12 March 2024.",
+    expected: valid,
+  },
+  {
+    name: "a document the source credits",
+    why: "The source itself attributes the count to the depot log, so stating what the log says adds nothing.",
+    source: "The North Depot log states that three crates arrived on 12 March 2024.",
+    proposition: "The North Depot log states that three crates arrived on 12 March 2024.",
+    claim: "The North Depot log states that three crates arrived on 12 March 2024.",
+    expected: valid,
+  },
+  {
     name: "all four fail",
     why: "Two unsupported actions replace the selected fact and have unresolved referents.",
     source,
