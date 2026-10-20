@@ -85,11 +85,11 @@ export const integrityRules = [
   },
   {
     key: "supported",
-    ask: "Read `source.text` in its supplied bounded context: resolve its pronouns, references and governing scope using `source.title`, `source.context.leadIn` and `source.context.sectionPath`. Does that resolved source assertion support the complete meaning of `claim`? Naming a referent established by this context is not an added assertion. Preserve negation, attribution, modality, quantities, scope and qualifications. A statement that someone believes, alleges or predicts something does not establish that thing as fact. Judge support from this bounded source, not outside-world truth. Do not accept a different assertion merely because it appears in the context rather than the selected text.",
+    ask: "Read `source.text` in its supplied bounded context: resolve its pronouns, references and governing scope using `source.title`, `source.context.leadIn` and `source.context.sectionPath`. Does that resolved source assertion support the complete meaning of `claim`? Naming a referent established by this context is not an added assertion. Preserve negation, attribution, modality, quantities, scope and qualifications. A statement that someone believes, alleges or predicts something does not establish that thing as fact. Judge support from this bounded source, not outside-world truth. Do not accept a different assertion merely because it appears in the context rather than the selected text. A claim presenting the source's content as said, stated, listed or described by the assistant, a message, or the excerpt, text, passage, speaker or source itself, rather than by whoever the source credits, adds a speech act the source does not contain.",
     criteria: {
       true: "The selected source text, with its references and scope resolved from the supplied context, states or necessarily implies the entire claim without addition or strengthening.",
       false:
-        "The claim adds, contradicts or strengthens the resolved source assertion, or substitutes a separate fact from the context for the selected assertion.",
+        "The claim adds, contradicts or strengthens the resolved source assertion, or substitutes a separate fact from the context for the selected assertion. This includes presenting the content as said or described by the assistant, a message, or the excerpt, text, passage, speaker or source itself.",
     },
     rejectPrefix: "unsupported",
   },
