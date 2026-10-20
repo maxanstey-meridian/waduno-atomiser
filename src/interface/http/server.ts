@@ -1,8 +1,9 @@
-import { run, type Pipeline } from "@maxanstey-meridian/tandem";
-import Fastify, { type FastifyInstance } from "fastify";
+import { run } from "@maxanstey-meridian/tandem";
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { AtomizationOutput } from "../../contracts/atomise.js";
 import { SourceEnvelope } from "../../contracts/source.js";
-import { initialAtomisationState, type AtomisationState } from "../../pipeline/state.js";
+import type { AtomiserPipelines } from "../../pipeline/pipelines.js";
+import { initialAtomisationState } from "../../pipeline/state.js";
 
 export type AtomiserServerOptions = {
   readonly concurrency: number;
@@ -17,7 +18,7 @@ export type AtomiserServer = {
 };
 
 export const createAtomiserServer = (
-  pipeline: Pipeline<AtomisationState>,
+  pipelines: AtomiserPipelines,
   options: AtomiserServerOptions,
 ): AtomiserServer => {
   const app = Fastify({ bodyLimit: 2_000_000 });
@@ -66,55 +67,59 @@ export const createAtomiserServer = (
     active,
     waiting: waiting.length,
   }));
-  app.post("/atomise", async (request, reply) => {
-    const parsed = SourceEnvelope.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ code: "invalid_source", message: parsed.error.message });
-    }
-    if (waiting.length >= options.queueLimit) {
-      return reply.code(503).send({ code: "busy", message: "Atomiser queue is full" });
-    }
-    const cancelled = new AbortController();
-    const disconnect = () => {
-      if (!reply.raw.writableFinished) {
-        cancelled.abort();
+  const atomise =
+    (pipeline: AtomiserPipelines["passage"]) =>
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const parsed = SourceEnvelope.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ code: "invalid_source", message: parsed.error.message });
+      }
+      if (waiting.length >= options.queueLimit) {
+        return reply.code(503).send({ code: "busy", message: "Atomiser queue is full" });
+      }
+      const cancelled = new AbortController();
+      const disconnect = () => {
+        if (!reply.raw.writableFinished) {
+          cancelled.abort();
+        }
+      };
+      reply.raw.on("close", disconnect);
+      const queued = AbortSignal.any([shutdown.signal, cancelled.signal]);
+      let timeout: AbortSignal | undefined;
+      let acquired = false;
+      try {
+        await acquire(queued);
+        acquired = true;
+        // The pipeline budget starts once a slot is held, not while queued.
+        timeout = AbortSignal.timeout(options.timeoutMs);
+        const signal = AbortSignal.any([queued, timeout]);
+        const result = await run(pipeline, initialAtomisationState(parsed.data), {
+          signal,
+          ledgerPath: options.ledgerPath,
+          enableLedgerTools: false,
+        });
+        if (!result.succeeded || result.state.output === null) {
+          return reply.code(502).send({
+            code: "atomisation_failed",
+            message: result.summary ?? "Pipeline did not produce a result",
+          });
+        }
+        return AtomizationOutput.parse(result.state.output);
+      } catch (error) {
+        const timedOut = timeout?.aborted === true;
+        return reply.code(timedOut ? 504 : shutdown.signal.aborted ? 503 : 502).send({
+          code: timedOut ? "atomisation_timeout" : "atomisation_failed",
+          message: error instanceof Error ? error.message : "Atomisation failed",
+        });
+      } finally {
+        if (acquired) {
+          release();
+        }
+        reply.raw.off("close", disconnect);
       }
     };
-    reply.raw.on("close", disconnect);
-    const queued = AbortSignal.any([shutdown.signal, cancelled.signal]);
-    let timeout: AbortSignal | undefined;
-    let acquired = false;
-    try {
-      await acquire(queued);
-      acquired = true;
-      // The pipeline budget starts once a slot is held, not while queued.
-      timeout = AbortSignal.timeout(options.timeoutMs);
-      const signal = AbortSignal.any([queued, timeout]);
-      const result = await run(pipeline, initialAtomisationState(parsed.data), {
-        signal,
-        ledgerPath: options.ledgerPath,
-        enableLedgerTools: false,
-      });
-      if (!result.succeeded || result.state.output === null) {
-        return reply.code(502).send({
-          code: "atomisation_failed",
-          message: result.summary ?? "Pipeline did not produce a result",
-        });
-      }
-      return AtomizationOutput.parse(result.state.output);
-    } catch (error) {
-      const timedOut = timeout?.aborted === true;
-      return reply.code(timedOut ? 504 : shutdown.signal.aborted ? 503 : 502).send({
-        code: timedOut ? "atomisation_timeout" : "atomisation_failed",
-        message: error instanceof Error ? error.message : "Atomisation failed",
-      });
-    } finally {
-      if (acquired) {
-        release();
-      }
-      reply.raw.off("close", disconnect);
-    }
-  });
+  app.post("/atomise", atomise(pipelines.passage));
+  app.post("/atomise-item", atomise(pipelines.item));
   app.addHook("onClose", async () => {
     shutdown.abort();
   });

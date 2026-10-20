@@ -73,12 +73,14 @@ export const foldIntegrityChecks = (
   });
 };
 
-export const passesIntegrity = (decision: IntegrityDecision): boolean =>
+export const passesItemIntegrity = (decision: IntegrityDecision): boolean =>
   decision.supported &&
   decision.meaning_preserved &&
   decision.standalone &&
-  decision.atomic &&
   decision.context_complete;
+
+export const passesIntegrity = (decision: IntegrityDecision): boolean =>
+  passesItemIntegrity(decision) && decision.atomic;
 
 export const canSplit = (decision: IntegrityDecision): boolean =>
   decision.supported &&

@@ -57,11 +57,14 @@ test("HTTP validates input, extracts every source kind, and distinguishes empty 
     },
     { persist: false },
   );
-  const { app } = createAtomiserServer(pipeline, {
-    concurrency: 1,
-    timeoutMs: 5000,
-    queueLimit: 8,
-  });
+  const { app } = createAtomiserServer(
+    { passage: pipeline, item: pipeline },
+    {
+      concurrency: 1,
+      timeoutMs: 5000,
+      queueLimit: 8,
+    },
+  );
   t.after(() => app.close());
   assert.equal(
     (await app.inject({ method: "POST", url: "/atomise", payload: { articleId: "wrong" } }))
@@ -104,7 +107,11 @@ test("HTTP validates input, extracts every source kind, and distinguishes empty 
   assert.equal((await app.inject("/health")).json().active, 0);
 });
 
-const keys = { OPENROUTER_API_KEY: "jev-key", CLAIM_EXTRACTOR_API_KEY: "extractor-key" };
+const keys = {
+  OPENROUTER_API_KEY: "jev-key",
+  CLAIM_EXTRACTOR_API_KEY: "extractor-key",
+  FASTINO_API_KEY: "fastino-key",
+};
 
 test("the splitter defaults to Luna on OpenRouter and accepts only HTTP endpoints", () => {
   const config = parseAtomiserEnv(keys);
@@ -115,9 +122,15 @@ test("the splitter defaults to Luna on OpenRouter and accepts only HTTP endpoint
   assert.throws(() => parseAtomiserEnv({ ...keys, SPLIT_BASE_URL: "file:///tmp/model" }));
 });
 
-test("configuration defaults the ClaimExtractor model and passes reasoning effort through", () => {
+test("configuration defaults the ClaimExtractor and tagger models and passes reasoning effort through", () => {
   const config = parseAtomiserEnv(keys);
   assert.equal(config.openRouterApiKey, "jev-key");
+  assert.deepEqual(config.tagger, {
+    baseUrl: "https://api.fastino.ai/v1",
+    model: "fastino/gliner2.5-base-v1",
+    apiKey: "fastino-key",
+    timeoutMilliseconds: 30_000,
+  });
   assert.deepEqual(config.claimExtractor, {
     baseUrl: "http://127.0.0.1:8092/v1",
     model: "claim-extractor-4B-q-2605-oQ8-MTP",
@@ -134,7 +147,7 @@ test("configuration defaults the ClaimExtractor model and passes reasoning effor
 
 test("startup fails when any model key is missing", () => {
   assert.throws(
-    () => parseAtomiserEnv({ CLAIM_EXTRACTOR_API_KEY: "extractor-key" }),
+    () => parseAtomiserEnv({ ...keys, OPENROUTER_API_KEY: undefined }),
     /OPENROUTER_API_KEY is required/u,
   );
   assert.throws(
@@ -142,12 +155,17 @@ test("startup fails when any model key is missing", () => {
     /SPLIT_KEY is required for claim splitting/u,
   );
   assert.throws(
-    () => parseAtomiserEnv({ OPENROUTER_API_KEY: "jev-key", CLAIM_EXTRACTOR_API_KEY: " " }),
+    () => parseAtomiserEnv({ ...keys, CLAIM_EXTRACTOR_API_KEY: " " }),
     /CLAIM_EXTRACTOR_API_KEY is required for ClaimExtractor/u,
+  );
+  assert.throws(
+    () => parseAtomiserEnv({ ...keys, FASTINO_API_KEY: "" }),
+    /FASTINO_API_KEY is required for GLiNER tagging/u,
   );
   assert.equal(
     parseAtomiserEnv({
       OPENROUTER_API_KEY: "jev-key",
+      FASTINO_API_KEY: "fastino-key",
       CLAIM_EXTRACTOR_API_KEY_ENVIRONMENT_VARIABLE: "OPENROUTER_API_KEY",
     }).claimExtractor.apiKeyVariable,
     "OPENROUTER_API_KEY",
@@ -189,11 +207,14 @@ test(
         outputs: [done],
         routes: [route({ from: wait, to: done, label: "done" })],
       });
-      const { app, cancel } = createAtomiserServer(graph, {
-        concurrency: 1,
-        timeoutMs: shutdown ? 5000 : 300,
-        queueLimit: 8,
-      });
+      const { app, cancel } = createAtomiserServer(
+        { passage: graph, item: graph },
+        {
+          concurrency: 1,
+          timeoutMs: shutdown ? 5000 : 300,
+          queueLimit: 8,
+        },
+      );
       t.after(() => app.close());
       const running = app
         .inject({ method: "POST", url: "/atomise", payload: source })
@@ -243,7 +264,10 @@ test("HTTP waits for a free atomisation slot", async (t) => {
     outputs: [done],
     routes: [route({ from: work, to: done, label: "done" })],
   });
-  const { app } = createAtomiserServer(graph, { concurrency: 1, timeoutMs: 5000, queueLimit: 8 });
+  const { app } = createAtomiserServer(
+    { passage: graph, item: graph },
+    { concurrency: 1, timeoutMs: 5000, queueLimit: 8 },
+  );
   t.after(() => app.close());
   const first = app.inject({ method: "POST", url: "/atomise", payload: source });
   await started;
@@ -289,7 +313,10 @@ test("HTTP answers busy once the wait queue is full", async (t) => {
     outputs: [done],
     routes: [route({ from: work, to: done, label: "done" })],
   });
-  const { app } = createAtomiserServer(graph, { concurrency: 1, timeoutMs: 5000, queueLimit: 1 });
+  const { app } = createAtomiserServer(
+    { passage: graph, item: graph },
+    { concurrency: 1, timeoutMs: 5000, queueLimit: 1 },
+  );
   t.after(() => {
     release();
     return app.close();

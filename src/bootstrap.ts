@@ -1,18 +1,18 @@
-import type { ChatClient, Pipeline } from "@maxanstey-meridian/tandem";
+import type { ChatClient } from "@maxanstey-meridian/tandem";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AtomiserConfig } from "./config.js";
 import { createClaimExtractor } from "./infrastructure/claim-extractor.js";
-import { createGlinerTagger } from "./infrastructure/gliner.js";
+import { createFastinoTagger } from "./infrastructure/fastino.js";
 import { createJevClassifiers } from "./infrastructure/jev.js";
 import { createClaimExtractorAtomisationPipeline } from "./pipeline/claim-extractor-atomisation-pipeline.js";
-import type { AtomisationState } from "./pipeline/state.js";
+import { createItemAtomisationPipeline } from "./pipeline/item-atomisation-pipeline.js";
+import type { AtomiserPipelines } from "./pipeline/pipelines.js";
 
 export type AtomiserRuntime = {
-  readonly pipeline: Pipeline<AtomisationState>;
+  readonly pipelines: AtomiserPipelines;
   readonly ledgerPath?: string;
-  readonly close: () => void;
 };
 
 export const bootstrapAtomiser = async (config: AtomiserConfig): Promise<AtomiserRuntime> => {
@@ -31,24 +31,25 @@ export const bootstrapAtomiser = async (config: AtomiserConfig): Promise<Atomise
     idleTimeoutMs: config.splitIdleTimeoutMilliseconds,
   };
   const { classifyIntegrity, classifyFraming } = createJevClassifiers(config.openRouterApiKey);
-  const tagger = createGlinerTagger(
-    config.glinerPython,
-    fileURLToPath(new URL("../python/gliner.py", import.meta.url)),
-    config.glinerModelPath,
-  );
-  const pipeline = createClaimExtractorAtomisationPipeline(
+  const tag = createFastinoTagger(config.tagger);
+  const persist = { persist: config.ledgerPath !== undefined };
+  const passage = createClaimExtractorAtomisationPipeline(
     {
       extractClaims: createClaimExtractor(
-        config.glinerPython,
+        config.python,
         fileURLToPath(new URL("../python/claim_extractor.py", import.meta.url)),
         config.claimExtractor,
       ),
       splitClient,
       classifyIntegrity,
       classifyFraming,
-      tag: tagger.tag,
+      tag,
     },
-    { persist: config.ledgerPath !== undefined },
+    persist,
   );
-  return { pipeline, ledgerPath: config.ledgerPath, close: tagger.close };
+  const item = createItemAtomisationPipeline(
+    { rewriteClient: splitClient, classifyIntegrity, classifyFraming, tag },
+    persist,
+  );
+  return { pipelines: { passage, item }, ledgerPath: config.ledgerPath };
 };

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-test("GLiNER setup uses PYTHON to create the venv and its interpreter afterwards", () => {
+test("Python setup uses PYTHON to create the venv and its interpreter afterwards", () => {
   const directory = mkdtempSync(join(tmpdir(), "atomiser-python-"));
   try {
     const python = join(directory, "chosen-python");
@@ -31,7 +31,7 @@ if (args[0] === "-m" && args[1] === "venv") {
       process.execPath,
       [
         "--env-file-if-exists=.env",
-        fileURLToPath(new URL("../scripts/setup-gliner.mjs", import.meta.url)),
+        fileURLToPath(new URL("../scripts/setup-python.mjs", import.meta.url)),
       ],
       {
         cwd: directory,
@@ -47,10 +47,6 @@ if (args[0] === "-m" && args[1] === "venv") {
       {
         executable: realpathSync(join(directory, ".venv/bin/python")),
         args: ["-m", "pip", "install", "-r", "python/requirements.txt"],
-      },
-      {
-        executable: realpathSync(join(directory, ".venv/bin/python")),
-        args: ["python/gliner.py", "--setup", ".data/gliner2.5-base-v1"],
       },
     ]);
   } finally {

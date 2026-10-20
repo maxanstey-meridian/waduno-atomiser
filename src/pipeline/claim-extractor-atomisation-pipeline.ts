@@ -1,6 +1,5 @@
 import {
   collection,
-  output,
   pipeline,
   route,
   stage,
@@ -13,18 +12,18 @@ import type { AtomTagger } from "../application/ports/atom-tagger.js";
 import type { ClaimExtractor } from "../application/ports/claim-extractor.js";
 import type { FramingClassifier } from "../application/ports/framing-classifier.js";
 import type { IntegrityClassifier } from "../application/ports/integrity-classifier.js";
-import type { AtomizationOutput } from "../contracts/atomise.js";
 import { SourceEnvelope } from "../contracts/source.js";
-import { assembleFraming } from "../domain/framing.js";
 import { IntegrityDecision, canSplit, passesIntegrity } from "../domain/integrity.js";
-import {
-  AssessedCandidate,
-  CanonicalCandidate,
-  type DiscoveredCandidate,
-  type FramedCandidate,
-} from "./candidate.js";
-import { finalise } from "./finalize.js";
+import { AssessedCandidate, CanonicalCandidate, type DiscoveredCandidate } from "./candidate.js";
 import { CandidateOutcome, acceptedCandidates, type CandidateResolution } from "./outcomes.js";
+import {
+  doneOutput,
+  finalizeStage,
+  framingStage,
+  integrityStage,
+  noPropositionsOutput,
+  taggingStage,
+} from "./stages.js";
 import { AtomisationState } from "./state.js";
 
 export type ClaimExtractorPipelineDependencies = {
@@ -38,12 +37,6 @@ export type ClaimExtractorPipelineDependencies = {
 export type ClaimExtractorPipelineOptions = {
   readonly persist: boolean;
 };
-
-const noPropositionsOutput = (): AtomizationOutput => ({
-  status: "no_propositions",
-  atoms: [],
-  candidateRejections: [],
-});
 
 export const createClaimExtractorAtomisationPipeline = (
   {
@@ -61,7 +54,12 @@ export const createClaimExtractorAtomisationPipeline = (
     execute: async (state, { signal }) => {
       const claims = await extractClaims(state.source, signal);
       const items = claims.map((claim, discoveryIndex) =>
-        CanonicalCandidate.parse({ discoveryIndex, proposition: claim, claim }),
+        CanonicalCandidate.parse({
+          discoveryIndex,
+          proposition: claim,
+          claim,
+          origin: "extracted",
+        }),
       );
       return {
         ...state,
@@ -140,6 +138,7 @@ export const createClaimExtractorAtomisationPipeline = (
           discoveryIndex,
           proposition: claim,
           claim,
+          origin: "extracted" as const,
           parentProposition: candidate.claim,
           recovery: "split" as const,
         };
@@ -196,98 +195,11 @@ export const createClaimExtractorAtomisationPipeline = (
     },
   });
 
-  const integrity = stage<AtomisationState>({
-    id: "integrity",
-    execute: async (state, { signal }) => {
-      if (state.working.phase !== "canonicalised") {
-        throw new Error("Integrity requires canonicalised candidates.");
-      }
-      const candidates = state.working.items;
-      const decisions = await classifyIntegrity(state.source, candidates, signal);
-      if (decisions.length !== candidates.length) {
-        throw new Error("Integrity classification produced an incorrect number of decisions.");
-      }
-      const items = candidates.map((candidate, index) => ({
-        ...candidate,
-        integrity: IntegrityDecision.parse(decisions[index]),
-      }));
-      return { ...state, working: { phase: "assessed", items } };
-    },
-  });
-
-  const framing = stage<AtomisationState>({
-    id: "framing",
-    execute: async (state, { signal }) => {
-      if (state.working.phase !== "accepted") {
-        throw new Error("Framing requires accepted candidates.");
-      }
-      const candidates = state.working.items;
-      const results = await classifyFraming(
-        state.source,
-        candidates.map((candidate) => candidate.claim),
-        signal,
-      );
-      if (results.length !== candidates.length) {
-        throw new Error("Framing classification produced an incorrect number of results.");
-      }
-      const items: FramedCandidate[] = candidates.map((candidate, index) => {
-        const result = results[index]!;
-        return {
-          ...candidate,
-          framing: assembleFraming(result.world, result.epistemic, result.temporal),
-        };
-      });
-      return { ...state, working: { phase: "framed", items } };
-    },
-  });
-
-  const tagging = stage<AtomisationState>({
-    id: "tagging",
-    execute: async (state, { signal }) => {
-      if (state.working.phase !== "framed") {
-        throw new Error("Tagging requires framed candidates.");
-      }
-      const candidates = state.working.items;
-      const tags =
-        candidates.length === 0
-          ? []
-          : await tag(
-              state.source.title,
-              candidates.map((candidate) => candidate.claim),
-              signal,
-            );
-      if (tags.length !== candidates.length) {
-        throw new Error("Tagger returned an incorrect number of results");
-      }
-      return {
-        ...state,
-        working: {
-          phase: "tagged",
-          items: candidates.map((candidate, index) => ({
-            ...candidate,
-            tags: tags[index]!,
-          })),
-        },
-      };
-    },
-  });
-
-  const finalize = stage<AtomisationState>({ id: "finalize", execute: finalise });
-  const done = output<AtomisationState>({
-    id: "done",
-    summary: (state) => {
-      if (state.output === null) {
-        throw new Error("Completed atomisation has no output.");
-      }
-      if (state.output.status === "no_propositions") {
-        return "No claims were extracted.";
-      }
-      if (state.output.status === "no_valid_candidates") {
-        return "No valid atom candidates remained.";
-      }
-      return `${state.output.atoms.length} atoms accepted.`;
-    },
-  });
+  const integrity = integrityStage(classifyIntegrity);
+  const framing = framingStage(classifyFraming);
+  const tagging = taggingStage(tag);
+  const finalize = finalizeStage();
+  const done = doneOutput();
   return pipeline({
     name: "atomization-claim-extractor",
     state: AtomisationState,

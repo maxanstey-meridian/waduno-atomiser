@@ -18,4 +18,3 @@ function run(executable, args) {
 run(python, ["-m", "venv", "--clear", ".venv"]);
 const venvPython = ".venv/bin/python";
 run(venvPython, ["-m", "pip", "install", "-r", "python/requirements.txt"]);
-run(venvPython, ["python/gliner.py", "--setup", ".data/gliner2.5-base-v1"]);

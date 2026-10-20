@@ -16,7 +16,7 @@ import {
 
 const config = parseAtomiserEnv();
 const address = parseExampleCorpusEnv();
-const { pipeline, ledgerPath, close } = await bootstrapAtomiser(config);
+const { pipelines, ledgerPath } = await bootstrapAtomiser(config);
 const billing = new OpenRouter({
   apiKey: config.openRouterApiKey,
   retryConfig: { strategy: "none" },
@@ -41,7 +41,7 @@ try {
       for (const source of sources) {
         console.log(formatDemoInput(source, width, color));
         const before = previousUsage;
-        const result = await run(pipeline, initialAtomisationState(source), {
+        const result = await run(pipelines.passage, initialAtomisationState(source), {
           signal: AbortSignal.any([shutdown.signal, AbortSignal.timeout(600_000)]),
           ledgerPath,
           enableLedgerTools: false,
@@ -71,7 +71,6 @@ try {
     await corpus.close();
   }
 } finally {
-  close();
   process.off("SIGINT", stop);
   process.off("SIGTERM", stop);
 }

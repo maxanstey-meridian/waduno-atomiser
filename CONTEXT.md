@@ -14,6 +14,11 @@ claim alone; contextual operations receive bounded source context. Only a claim
 that fails atomicity alone is split; its children are checked against their
 parent and rejected if they fail. There is no repair and no recursive splitting.
 
+A source whose text is already one self-contained item (a trivia entry) goes to
+the item pipeline instead: one rewrite makes it standalone, Jev compares the
+rewrite with the original, and atomicity does not gate it, because an item may
+carry several facts that belong together, such as a setup and its punchline.
+
 Domain owns the acceptance threshold and split eligibility. Application ports
 own their narrow source-context inputs; the pipeline assembles public output.
 Its working phase carries pending, canonicalised, assessed, accepted, framed
@@ -35,8 +40,8 @@ Framing evaluates the complete emitted assertion. Fictional narrative assertions
 are fixed relative to the narrative, not the reader's moving present; incompatible
 world/temporal classifications fail visibly. Work identification remains deferred; framing exposes only the world layer.
 
-Native Tandem owns execution, concurrency and the ledger. GLiNER uses a warm local
-subprocess; its protocol/lifecycle is not an additional background-job system.
+Native Tandem owns execution, concurrency and the ledger. GLiNER is a hosted Fastino
+call per claim; it holds no process or background state.
 The demo owns its watched example API process and obtains every catalogue entry
 over HTTP. No global process matching, detached daemon or corpus import shortcut.
 

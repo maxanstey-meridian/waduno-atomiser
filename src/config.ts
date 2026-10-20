@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ClaimExtractorEndpoint } from "./infrastructure/claim-extractor.js";
+import type { FastinoEndpoint } from "./infrastructure/fastino.js";
 
 const positiveInteger = (defaultValue: number) =>
   z.coerce.number().int().positive().default(defaultValue);
@@ -31,7 +32,9 @@ const EnvironmentConfig = z.object({
   SPLIT_API_KEY_ENVIRONMENT_VARIABLE: z.string().trim().min(1).default("OPENROUTER_API_KEY"),
   OPENROUTER_API_KEY: z.string().trim().min(1).optional(),
   TANDEM_LEDGER_PATH: z.string().trim().min(1).optional(),
-  GLINER_MODEL_PATH: z.string().trim().min(1).default(".data/gliner2.5-base-v1"),
+  FASTINO_BASE_URL: modelBaseUrl.default("https://api.fastino.ai/v1"),
+  FASTINO_MODEL: z.string().trim().min(1).default("fastino/gliner2.5-base-v1"),
+  FASTINO_REQUEST_TIMEOUT_MILLISECONDS: positiveInteger(30_000),
   SPLIT_REQUEST_TIMEOUT_MILLISECONDS: positiveInteger(30_000),
   SPLIT_IDLE_TIMEOUT_MILLISECONDS: positiveInteger(30_000),
   CLAIM_EXTRACTOR_BASE_URL: modelBaseUrl.default("http://127.0.0.1:8092/v1"),
@@ -58,8 +61,8 @@ export type AtomiserConfig = {
   readonly splitModel: string;
   readonly splitApiKeyEnvironmentVariable: string;
   readonly openRouterApiKey: string;
-  readonly glinerPython: string;
-  readonly glinerModelPath: string;
+  readonly python: string;
+  readonly tagger: FastinoEndpoint;
   readonly ledgerPath?: string;
   readonly splitRequestTimeoutMilliseconds: number;
   readonly splitIdleTimeoutMilliseconds: number;
@@ -75,13 +78,19 @@ export const parseAtomiserEnv = (environment: NodeJS.ProcessEnv = process.env): 
     requiredApiKey(environment, "OPENROUTER_API_KEY", "Jev classification");
   requiredApiKey(environment, value.SPLIT_API_KEY_ENVIRONMENT_VARIABLE, "claim splitting");
   requiredApiKey(environment, value.CLAIM_EXTRACTOR_API_KEY_ENVIRONMENT_VARIABLE, "ClaimExtractor");
+  const fastinoApiKey = requiredApiKey(environment, "FASTINO_API_KEY", "GLiNER tagging");
   return {
     splitBaseUrl: value.SPLIT_BASE_URL,
     splitModel: value.SPLIT_MODEL,
     splitApiKeyEnvironmentVariable: value.SPLIT_API_KEY_ENVIRONMENT_VARIABLE,
     openRouterApiKey,
-    glinerPython: ".venv/bin/python",
-    glinerModelPath: value.GLINER_MODEL_PATH,
+    python: ".venv/bin/python",
+    tagger: {
+      baseUrl: value.FASTINO_BASE_URL,
+      model: value.FASTINO_MODEL,
+      apiKey: fastinoApiKey,
+      timeoutMilliseconds: value.FASTINO_REQUEST_TIMEOUT_MILLISECONDS,
+    },
     splitRequestTimeoutMilliseconds: value.SPLIT_REQUEST_TIMEOUT_MILLISECONDS,
     splitIdleTimeoutMilliseconds: value.SPLIT_IDLE_TIMEOUT_MILLISECONDS,
     claimExtractor: {

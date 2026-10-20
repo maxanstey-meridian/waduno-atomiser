@@ -30,7 +30,7 @@ into propositions by a hosted model (Luna, thinking off); each child is checked
 again and failed children are rejected. Any other failure rejects the claim.
 
 Jev then classifies each retained claim's world, epistemic and temporal framing.
-Fastino's [GLiNER 2.5] extracts entities using the claim and source title. Atoms
+Fastino's hosted [GLiNER 2.5] extracts entities using the claim and source title. Atoms
 expose these as `tags: string[]`: only entities with confidence at least `0.8` are
 included, and exact duplicate text is collapsed without regard to case, keeping
 the first spelling. Distinct names are kept even when one contains another.
@@ -48,7 +48,7 @@ successful `no_propositions` result; rejecting every candidate produces
 ## Architecture
 
 This is a TypeScript application on Node.js, with Zod wire contracts and a small
-Fastify host exposing `POST /atomise`. [Tandem] runs the pipeline, manages
+Fastify host exposing `POST /atomise` and `POST /atomise-item`. [Tandem] runs the pipelines, manages
 collection concurrency and, when `TANDEM_LEDGER_PATH` is set, records execution
 in SQLite. The public schemas live
 in [src/contracts](src/contracts) and are exported through the package's
@@ -57,12 +57,13 @@ pipeline stages handle integrity, framing, tagging and finalisation.
 
 ClaimExtractor runs through a Python adapter against an OpenAI-compatible model
 endpoint: the local fine-tune by default, or a hosted model given the same prompt.
-Splitting and Jev use OpenRouter. [GLiNER] runs locally in a Python
-subprocess kept warm between requests. The host and CLI close it on shutdown.
+Splitting and Jev use OpenRouter. [GLiNER] runs on Fastino's hosted API, one request
+per claim.
 
 ## Getting started
 
-Requires Node.js 22+, pnpm, Python 3.13 and an OpenRouter key with access to Jev.
+Requires Node.js 22+, pnpm, Python 3.13, an OpenRouter key with access to Jev and a
+Fastino API key.
 The Tandem runtime bundle supports Linux x64 and macOS on Apple silicon and
 requires the .NET 10 runtime. [Task] is used for the demo commands.
 
@@ -72,12 +73,12 @@ claims that fail the atomicity check.
 ```sh
 pnpm install
 cp .env.example .env
-pnpm setup:gliner
+pnpm setup:python
 ```
 
-Setup creates `.venv`, installs the Python dependencies for GLiNER and
-ClaimExtractor, and downloads the pinned GLiNER weights. Set `OPENROUTER_API_KEY`
-and `CLAIM_EXTRACTOR_API_KEY` in `.env`; startup fails if either key is missing.
+Setup creates `.venv` and installs ClaimExtractor's Python dependencies. Set
+`OPENROUTER_API_KEY`, `CLAIM_EXTRACTOR_API_KEY` and `FASTINO_API_KEY` in `.env`;
+startup fails if any key is missing.
 
 To send ClaimExtractor's prompt to a hosted model instead of the local fine-tune,
 set `CLAIM_EXTRACTOR_BASE_URL`, `CLAIM_EXTRACTOR_MODEL`,
@@ -112,7 +113,10 @@ unless noted otherwise.
 | `CORPUS_BASE_URL`                              | `http://127.0.0.1:8098`             | Example corpus API address used by the demo.                                              |
 | `TANDEM_LEDGER_PATH`                           | unset                               | Optional SQLite execution ledger path; unset keeps no run history.                        |
 | `PYTHON`                                       | `python3.13`                        | Executable used to create `.venv`; runtime uses `.venv/bin/python`.                       |
-| `GLINER_MODEL_PATH`                            | `.data/gliner2.5-base-v1`           | Local GLiNER weights downloaded by setup.                                                 |
+| `FASTINO_API_KEY`                              | Required                            | Fastino key for GLiNER tagging.                                                           |
+| `FASTINO_BASE_URL`                             | `https://api.fastino.ai/v1`         | Fastino API endpoint.                                                                     |
+| `FASTINO_MODEL`                                | `fastino/gliner2.5-base-v1`         | Hosted GLiNER model.                                                                      |
+| `FASTINO_REQUEST_TIMEOUT_MILLISECONDS`         | `30000`                             | Timeout per tagging request.                                                              |
 
 ### HTTP and CLI
 
@@ -131,13 +135,20 @@ curl -sS http://127.0.0.1:8099/atomise \
 ```
 
 `POST /atomise` returns `completed`, `no_propositions` or `no_valid_candidates`,
-with `atoms` and `candidateRejections`. `GET /health` reports host readiness,
+with `atoms` and `candidateRejections`.
+
+`POST /atomise-item` takes the same envelope for a source whose text is already one
+self-contained item, such as a trivia entry. It skips ClaimExtractor and splitting:
+the split model rewrites the item once so it stands alone, Jev checks the rewrite
+against the original (all checks except atomicity gate it), and the item becomes one
+atom whose `proposition` is the original text and `claim` the rewrite. `GET /health` reports host readiness,
 active runs and queued requests (`waiting`); it does not probe model dependencies.
 
 For a single local source file:
 
 ```sh
 pnpm atomize source.json
+pnpm atomize source.json --item
 pnpm atomize source.json --demo
 ```
 

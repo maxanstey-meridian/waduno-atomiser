@@ -33,7 +33,7 @@
     "test": "node --import tsx --test tests/*.test.ts",
     "test:jev": "node --env-file-if-exists=.env --import tsx --test tests/live/jev.test.ts",
     "test:jev:context": "node --env-file-if-exists=.env --import tsx --test tests/live/jev-context.test.ts",
-    "setup:gliner": "node --env-file-if-exists=.env scripts/setup-gliner.mjs",
+    "setup:python": "node --env-file-if-exists=.env scripts/setup-python.mjs",
     "serve": "pnpm build && pnpm start",
     "start": "node --env-file-if-exists=.env dist/src/server.js",
     "prepublishOnly": "pnpm check"

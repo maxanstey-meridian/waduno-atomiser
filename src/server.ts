@@ -4,15 +4,12 @@ import { createAtomiserServer } from "./interface/http/server.js";
 
 const config = parseAtomiserEnv();
 const host = parseServerEnv();
-const { pipeline, ledgerPath, close } = await bootstrapAtomiser(config);
-const { app, cancel } = createAtomiserServer(pipeline, {
+const { pipelines, ledgerPath } = await bootstrapAtomiser(config);
+const { app, cancel } = createAtomiserServer(pipelines, {
   concurrency: host.ATOMISER_CONCURRENCY,
   timeoutMs: host.ATOMISER_TIMEOUT_MS,
   queueLimit: host.ATOMISER_QUEUE_LIMIT,
   ledgerPath,
-});
-app.addHook("onClose", async () => {
-  close();
 });
 await app.listen({ host: host.ATOMISER_HOST, port: host.ATOMISER_PORT });
 const stop = () => {

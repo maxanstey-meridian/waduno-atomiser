@@ -9,14 +9,13 @@ Public wire schemas live in src/contracts and are published through ./contracts.
 Domain owns pure decision types, integrity thresholds and split eligibility; pipeline owns internal state schemas
 and consumes the public source/output schemas directly. Contracts never import
 Domain or pipeline internals. Application owns narrow model ports, with no
-contracts or Tandem imports. Pipeline owns the ClaimExtractor graph and its
+contracts or Tandem imports. Pipeline owns the ClaimExtractor (passage) and item graphs and their shared
 integrity, framing, tagging and finalisation stages; infrastructure implements model ports. Bootstrap's async bootstrapAtomiser resolves to an explicit AtomiserRuntime
-{ pipeline: Pipeline<AtomisationState>, ledgerPath?, close }. The graph factory lives in pipeline/;
-HTTP accepts the pipeline directly. Agent definitions live in agents/ and declare
+{ pipelines: { passage, item }, ledgerPath? }. The graph factory lives in pipeline/;
+HTTP accepts both pipelines directly: `/atomise` runs passage, `/atomise-item` runs item. Agent definitions live in agents/ and declare
 explicit input/output types; state types are inferred from their owning Zod schemas. Candidate records carry their own
 assessment and enrichment under a discriminated working phase. Claim resolution takes one
-assessed candidate and returns an outcome; the resolve-claims collection applies ordered split-child identities. HTTP host and CLI invoke native Tandem run directly and close
-the GLiNER subprocess when their lifecycle ends.
+assessed candidate and returns an outcome; the resolve-claims collection applies ordered split-child identities. HTTP host and CLI invoke native Tandem run directly.
 
 The published source schema has opaque id/version, title, text, kind, context
 and evidence passages. No Wikipedia article/revision fields or corpus endpoints.
@@ -39,6 +38,11 @@ contract change is a breaking release, and consumers migrate their stored atoms.
 - Graphs capture configuration only. Stages read source/signal from execution.
 - Native Tandem max owns child concurrency; do not add striped worker pools.
 - The ClaimExtractor graph checks extracted claims with Jev first. All five checks must pass; only atomicity failures that pass the other integrity checks go to splitting; split children are checked against their parent by Jev and failed claims are rejected.
+- The item graph rewrites the whole source text once with the split model (reasoning effort `low`,
+  raw text), never extracts or splits, and gates on every integrity check except atomicity.
+  Its candidate keeps the original text as proposition and the rewrite as claim, so
+  meaning_preserved compares them. Candidates carry their origin (`extracted` or `rewritten`);
+  only `rewritten` candidates are accepted without atomicity.
 - Claim resolution runs at most six original-candidate sequences per source; child work
   remains serial within each branch. Merge in input order and assign source-wide
   split-child identities there, never from concurrent shared mutation.
@@ -48,9 +52,9 @@ contract change is a breaking release, and consumers migrate their stored atoms.
   Atoms expose entity text as string tags only when confidence is at least 0.8.
   Deduplicate exact tag text without regard to case; preserve distinct names and substrings;
   no types, confidence, spans or resolution are exposed.
-- `pnpm setup:gliner` installs the local Python 3.13 environment and pinned model.
-  Runtime loads local weights once per subprocess; stdout is JSON lines and
-  diagnostics go to stderr. Tagger failures fail the run, not empty tags.
+- GLiNER runs on Fastino's hosted API (`FASTINO_API_KEY`), one request per claim.
+  `pnpm setup:python` installs the Python 3.13 environment ClaimExtractor uses.
+  Tagger failures fail the run, not empty tags.
 
 ## Work
 
