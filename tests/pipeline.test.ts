@@ -116,7 +116,7 @@ const assessed = (
 ) =>
   items.map(({ claim, integrity }, discoveryIndex) => ({
     discoveryIndex,
-    origin: "extracted",
+    unit: "claim",
     proposition: claim,
     claim,
     integrity,
@@ -238,7 +238,7 @@ test("dedupe reports the original extraction index after earlier duplicates were
       items: ["First.", "First.", "Second.", "Second."].map((claim, discoveryIndex) => ({
         proposition: claim,
         claim,
-        origin: "extracted",
+        unit: "claim",
         discoveryIndex,
       })),
     },
@@ -283,7 +283,7 @@ test("dedupe preserves signs, decimal points, case and punctuation while removin
       items: claims.map((claim, discoveryIndex) => ({
         proposition: claim,
         claim,
-        origin: "extracted",
+        unit: "claim",
         discoveryIndex,
       })),
     },
@@ -522,7 +522,7 @@ test("framing evaluates the emitted claim with the bounded source text", async (
         items: [
           {
             discoveryIndex: 0,
-            origin: "extracted",
+            unit: "claim",
             proposition: "It jumps over the dog.",
             claim: "The fox jumps over the dog.",
             integrity: decision(),
@@ -546,7 +546,7 @@ test("framing rejects a mismatched classifier result count", async () => {
         items: [
           {
             discoveryIndex: 0,
-            origin: "extracted",
+            unit: "claim",
             proposition: "The fox jumps.",
             claim: "The fox jumps.",
             integrity: decision(),
@@ -585,7 +585,7 @@ test("downstream stages reject missing or blank canonical claims before model ca
             items: [
               {
                 discoveryIndex: 0,
-                origin: "extracted",
+                unit: "claim",
                 proposition: "A fact.",
                 ...(claim === undefined ? {} : { claim }),
                 integrity: decision(),
@@ -646,7 +646,7 @@ test(
           phase: "assessed",
           items: Array.from({ length: 8 }, (_, discoveryIndex) => ({
             discoveryIndex,
-            origin: "extracted",
+            unit: "claim",
             proposition: String(discoveryIndex),
             claim: String(discoveryIndex),
             integrity: decision({ atomic: false }),
@@ -731,14 +731,14 @@ test(
             discoveryIndex: 0,
             proposition: "Parent A",
             claim: "Parent A",
-            origin: "extracted",
+            unit: "claim",
             integrity: decision({ atomic: false }),
           },
           {
             discoveryIndex: 2,
             proposition: "Parent B",
             claim: "Parent B",
-            origin: "extracted",
+            unit: "claim",
             integrity: decision({ atomic: false }),
           },
         ],
@@ -873,7 +873,7 @@ test(
             phase: "assessed",
             items: Array.from({ length: 8 }, (_, discoveryIndex) => ({
               discoveryIndex,
-              origin: "extracted",
+              unit: "claim",
               proposition: String(discoveryIndex),
               claim: String(discoveryIndex),
               integrity: decision({ atomic: false }),
@@ -903,7 +903,7 @@ test(
 test("working phases reject incomplete records and stages reject the wrong phase", async () => {
   const candidate = {
     discoveryIndex: 0,
-    origin: "extracted",
+    unit: "claim",
     proposition: "A fact.",
     claim: "A fact.",
     integrity: decision(),
@@ -969,9 +969,7 @@ test("integrity refuses missing and extra classifier decisions", async () => {
         ...initialAtomisationState(source),
         working: {
           phase: "canonicalised",
-          items: [
-            { discoveryIndex: 0, proposition: "A fact.", claim: "A fact.", origin: "extracted" },
-          ],
+          items: [{ discoveryIndex: 0, proposition: "A fact.", claim: "A fact.", unit: "claim" }],
         },
       }),
       /incorrect number of decisions/u,
@@ -982,7 +980,7 @@ test("integrity refuses missing and extra classifier decisions", async () => {
 test("finalisation keeps each survivor's scores, framing and tags when candidates are reordered", async () => {
   const first = {
     discoveryIndex: 0,
-    origin: "extracted",
+    unit: "claim",
     proposition: "First.",
     claim: "First claim.",
     integrity: decision({ mean: 0.8 }),
@@ -997,7 +995,7 @@ test("finalisation keeps each survivor's scores, framing and tags when candidate
   const second = {
     ...first,
     discoveryIndex: 2,
-    origin: "extracted",
+    unit: "claim",
     proposition: "Second.",
     claim: "Second claim.",
     integrity: decision({ mean: 0.9 }),

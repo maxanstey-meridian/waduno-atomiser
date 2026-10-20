@@ -234,7 +234,7 @@ test(
   },
 );
 
-test("HTTP waits for a free atomisation slot", async (t) => {
+test("HTTP waits for a free atomisation slot shared by passages and items", async (t) => {
   let entered = 0;
   let releaseFirst = () => {};
   const firstGate = new Promise<void>((resolve) => {
@@ -271,7 +271,7 @@ test("HTTP waits for a free atomisation slot", async (t) => {
   t.after(() => app.close());
   const first = app.inject({ method: "POST", url: "/atomise", payload: source });
   await started;
-  const second = app.inject({ method: "POST", url: "/atomise", payload: source });
+  const second = app.inject({ method: "POST", url: "/atomise-item", payload: source });
   let secondSettled = false;
   void second.then(() => {
     secondSettled = true;
@@ -287,7 +287,7 @@ test("HTTP waits for a free atomisation slot", async (t) => {
   assert.equal((await app.inject("/health")).json().active, 0);
 });
 
-test("HTTP answers busy once the wait queue is full", async (t) => {
+test("HTTP answers busy once the wait queue shared by passages and items is full", async (t) => {
   let release = () => {};
   const gate = new Promise<void>((resolve) => {
     release = resolve;
@@ -323,7 +323,7 @@ test("HTTP answers busy once the wait queue is full", async (t) => {
   });
   const first = app.inject({ method: "POST", url: "/atomise", payload: source });
   await running;
-  const second = app.inject({ method: "POST", url: "/atomise", payload: source });
+  const second = app.inject({ method: "POST", url: "/atomise-item", payload: source });
   for (let attempt = 0; (await app.inject("/health")).json().waiting !== 1; attempt++) {
     assert.ok(attempt < 100, "second request never queued");
     await new Promise<void>((resolve) => setTimeout(resolve, 5));

@@ -105,7 +105,7 @@ test("integrity gates every check at 0.6 and limits splitting to atomicity failu
     mean: 1,
     reason: "",
   };
-  assert.equal(passesIntegrity(accepted), true);
+  assert.equal(passesIntegrity("claim", accepted), true);
   assert.equal(canSplit(accepted), false);
   for (const key of [
     "supported",
@@ -115,7 +115,7 @@ test("integrity gates every check at 0.6 and limits splitting to atomicity failu
     "atomic",
   ] as const) {
     const failed = { ...accepted, [key]: false };
-    assert.equal(passesIntegrity(failed), false, key);
+    assert.equal(passesIntegrity("claim", failed), false, key);
     assert.equal(canSplit(failed), key === "atomic", key);
   }
   for (const key of ["supported", "meaning_preserved"] as const) {
@@ -130,4 +130,25 @@ test("integrity gates every check at 0.6 and limits splitting to atomicity failu
   }
   const unresolvedCompound = { ...accepted, standalone: false, atomic: false };
   assert.equal(canSplit(unresolvedCompound), false);
+});
+
+test("a rejection names a gated check before atomicity, whatever order the checks ran in", () => {
+  const checks = (
+    ["atomic", "supported", "meaning_preserved", "standalone", "context_complete"] as const
+  ).map((key) => ({
+    index: 0,
+    key,
+    probability: key === "atomic" || key === "supported" ? 0.1 : 0.9,
+    reason: `${key} failed`,
+  }));
+  const decision = foldIntegrityChecks(checks, 1)[0]!;
+  assert.equal(decision.reason, "supported failed");
+  assert.equal(passesIntegrity("item", decision), false);
+  const onlyAtomic = foldIntegrityChecks(
+    checks.map((check) => (check.key === "supported" ? { ...check, probability: 0.9 } : check)),
+    1,
+  )[0]!;
+  assert.equal(onlyAtomic.reason, "atomic failed");
+  assert.equal(passesIntegrity("item", onlyAtomic), true);
+  assert.equal(passesIntegrity("claim", onlyAtomic), false);
 });

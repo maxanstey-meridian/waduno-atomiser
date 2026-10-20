@@ -1,9 +1,9 @@
-import { run } from "@maxanstey-meridian/tandem";
+import { run, type Pipeline } from "@maxanstey-meridian/tandem";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { AtomizationOutput } from "../../contracts/atomise.js";
 import { SourceEnvelope } from "../../contracts/source.js";
 import type { AtomiserPipelines } from "../../pipeline/pipelines.js";
-import { initialAtomisationState } from "../../pipeline/state.js";
+import { initialAtomisationState, type AtomisationState } from "../../pipeline/state.js";
 
 export type AtomiserServerOptions = {
   readonly concurrency: number;
@@ -68,7 +68,7 @@ export const createAtomiserServer = (
     waiting: waiting.length,
   }));
   const atomise =
-    (pipeline: AtomiserPipelines["passage"]) =>
+    (pipeline: Pipeline<AtomisationState>) =>
     async (request: FastifyRequest, reply: FastifyReply) => {
       const parsed = SourceEnvelope.safeParse(request.body);
       if (!parsed.success) {

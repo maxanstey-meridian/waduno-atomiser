@@ -49,7 +49,10 @@ const framed = (claims: readonly string[]) =>
   }));
 
 test("an item is rewritten once and kept whole when only atomicity fails", async (t) => {
-  const rewriter = await chatServer(t, () => `  ${rewritten}\n`);
+  const rewriter = await chatServer(t, (request) => {
+    assert.equal(request.reasoning_effort, "low");
+    return `  ${rewritten}\n`;
+  });
   const checked: { proposition: string; claim: string }[] = [];
   const tagged: string[] = [];
   const graph = createItemAtomisationPipeline(
@@ -157,12 +160,12 @@ test("only rewritten items are accepted without atomicity", () => {
     claim: "A and B.",
     integrity: decision({ atomic: false }),
   };
-  assert.equal(AcceptedCandidate.safeParse({ ...candidate, origin: "rewritten" }).success, true);
-  assert.equal(AcceptedCandidate.safeParse({ ...candidate, origin: "extracted" }).success, false);
+  assert.equal(AcceptedCandidate.safeParse({ ...candidate, unit: "item" }).success, true);
+  assert.equal(AcceptedCandidate.safeParse({ ...candidate, unit: "claim" }).success, false);
   assert.equal(
     AcceptedCandidate.safeParse({
       ...candidate,
-      origin: "rewritten",
+      unit: "item",
       integrity: decision({ standalone: false }),
     }).success,
     false,

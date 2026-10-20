@@ -11,7 +11,8 @@ import type { AtomTagger } from "../application/ports/atom-tagger.js";
 import type { FramingClassifier } from "../application/ports/framing-classifier.js";
 import type { IntegrityClassifier } from "../application/ports/integrity-classifier.js";
 import { SourceEnvelope } from "../contracts/source.js";
-import { CanonicalCandidate, passesCandidateIntegrity } from "./candidate.js";
+import { passesIntegrity } from "../domain/integrity.js";
+import { CanonicalCandidate } from "./candidate.js";
 import { CandidateOutcome, acceptedCandidates } from "./outcomes.js";
 import { doneOutput, finalizeStage, framingStage, integrityStage, taggingStage } from "./stages.js";
 import { AtomisationState } from "./state.js";
@@ -45,7 +46,7 @@ export const createItemAtomisationPipeline = (
         sectionPath: source.context.sectionPath,
         text: source.text,
       });
-      return { discoveryIndex: 0, proposition: source.text, claim, origin: "rewritten" };
+      return { discoveryIndex: 0, proposition: source.text, claim, unit: "item" };
     },
     apply: (state, items): AtomisationState => ({
       ...state,
@@ -60,7 +61,7 @@ export const createItemAtomisationPipeline = (
         throw new Error("Resolution requires assessed claims.");
       }
       const outcomes = state.working.items.map((candidate): CandidateOutcome =>
-        passesCandidateIntegrity(candidate)
+        passesIntegrity(candidate.unit, candidate.integrity)
           ? { outcome: "accepted", candidate, accepted: candidate, reason: "" }
           : { outcome: "rejected", candidate, reason: candidate.integrity.reason },
       );

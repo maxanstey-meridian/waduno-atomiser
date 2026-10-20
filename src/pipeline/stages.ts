@@ -2,18 +2,11 @@ import { output, stage } from "@maxanstey-meridian/tandem";
 import type { AtomTagger } from "../application/ports/atom-tagger.js";
 import type { FramingClassifier } from "../application/ports/framing-classifier.js";
 import type { IntegrityClassifier } from "../application/ports/integrity-classifier.js";
-import type { AtomizationOutput } from "../contracts/atomise.js";
 import { assembleFraming } from "../domain/framing.js";
 import { IntegrityDecision } from "../domain/integrity.js";
 import type { FramedCandidate } from "./candidate.js";
 import { finalise } from "./finalize.js";
 import type { AtomisationState } from "./state.js";
-
-export const noPropositionsOutput = (): AtomizationOutput => ({
-  status: "no_propositions",
-  atoms: [],
-  candidateRejections: [],
-});
 
 export const integrityStage = (classifyIntegrity: IntegrityClassifier) =>
   stage<AtomisationState>({

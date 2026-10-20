@@ -12,19 +12,19 @@ import type { AtomTagger } from "../application/ports/atom-tagger.js";
 import type { ClaimExtractor } from "../application/ports/claim-extractor.js";
 import type { FramingClassifier } from "../application/ports/framing-classifier.js";
 import type { IntegrityClassifier } from "../application/ports/integrity-classifier.js";
+import type { AtomizationOutput } from "../contracts/atomise.js";
 import { SourceEnvelope } from "../contracts/source.js";
 import { IntegrityDecision, canSplit, passesIntegrity } from "../domain/integrity.js";
 import { AssessedCandidate, CanonicalCandidate, type DiscoveredCandidate } from "./candidate.js";
 import { CandidateOutcome, acceptedCandidates, type CandidateResolution } from "./outcomes.js";
-import {
-  doneOutput,
-  finalizeStage,
-  framingStage,
-  integrityStage,
-  noPropositionsOutput,
-  taggingStage,
-} from "./stages.js";
+import { doneOutput, finalizeStage, framingStage, integrityStage, taggingStage } from "./stages.js";
 import { AtomisationState } from "./state.js";
+
+const noPropositionsOutput = (): AtomizationOutput => ({
+  status: "no_propositions",
+  atoms: [],
+  candidateRejections: [],
+});
 
 export type ClaimExtractorPipelineDependencies = {
   readonly extractClaims: ClaimExtractor;
@@ -58,7 +58,7 @@ export const createClaimExtractorAtomisationPipeline = (
           discoveryIndex,
           proposition: claim,
           claim,
-          origin: "extracted",
+          unit: "claim",
         }),
       );
       return {
@@ -112,7 +112,7 @@ export const createClaimExtractorAtomisationPipeline = (
       return state.working.items.map((candidate) => ({ source: state.source, candidate }));
     },
     execute: async ({ source, candidate }, context): Promise<CandidateOutcome> => {
-      if (passesIntegrity(candidate.integrity)) {
+      if (passesIntegrity("claim", candidate.integrity)) {
         return { outcome: "accepted", candidate, accepted: candidate, reason: "" };
       }
       if (!canSplit(candidate.integrity)) {
@@ -138,7 +138,7 @@ export const createClaimExtractorAtomisationPipeline = (
           discoveryIndex,
           proposition: claim,
           claim,
-          origin: "extracted" as const,
+          unit: "claim" as const,
           parentProposition: candidate.claim,
           recovery: "split" as const,
         };
@@ -151,7 +151,7 @@ export const createClaimExtractorAtomisationPipeline = (
           integrity: IntegrityDecision.parse(decisions[0]),
         });
         children.push(
-          passesIntegrity(assessed.integrity)
+          passesIntegrity("claim", assessed.integrity)
             ? {
                 outcome: "accepted",
                 candidate: assessed,

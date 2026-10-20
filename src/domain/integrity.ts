@@ -67,24 +67,24 @@ export const foldIntegrityChecks = (
       context_complete: acceptsIntegrityProbability(probabilities.context_complete),
       atomic: acceptsIntegrityProbability(probabilities.atomic),
       reason:
-        candidateChecks.find((check) => !acceptsIntegrityProbability(check.probability))?.reason ??
-        "",
+        [...candidateChecks]
+          .sort((a, b) => Number(a.key === "atomic") - Number(b.key === "atomic"))
+          .find((check) => !acceptsIntegrityProbability(check.probability))?.reason ?? "",
     };
   });
 };
 
-export const passesItemIntegrity = (decision: IntegrityDecision): boolean =>
+export const IntegrityUnit = z.enum(["claim", "item"]);
+export type IntegrityUnit = z.infer<typeof IntegrityUnit>;
+
+const passesGatedChecks = (decision: IntegrityDecision): boolean =>
   decision.supported &&
   decision.meaning_preserved &&
   decision.standalone &&
   decision.context_complete;
 
-export const passesIntegrity = (decision: IntegrityDecision): boolean =>
-  passesItemIntegrity(decision) && decision.atomic;
+export const passesIntegrity = (unit: IntegrityUnit, decision: IntegrityDecision): boolean =>
+  passesGatedChecks(decision) && (unit === "item" || decision.atomic);
 
 export const canSplit = (decision: IntegrityDecision): boolean =>
-  decision.supported &&
-  decision.meaning_preserved &&
-  decision.standalone &&
-  decision.context_complete &&
-  !decision.atomic;
+  passesGatedChecks(decision) && !decision.atomic;

@@ -26,7 +26,8 @@ or tagged candidate records, each carrying its own metadata.
 All downstream stages require a nonblank canonical claim. Deduplication rejections
 use their own stage and omit scores; they never received an integrity verdict.
 The split agent explicitly requests reasoning effort `none`.
-Model roles are ClaimExtractor for extraction, the split agent for splitting, and Jev for
+Model roles are ClaimExtractor for extraction, the split agent for splitting (and the
+same model for rewriting items), and Jev for
 integrity/framing; GLiNER provides entity text, type and confidence separately.
 Claim resolution uses native Tandem concurrency, bounded at six per source run.
 Split branches keep their child work serial and their results isolated.

@@ -82,7 +82,7 @@ test(
       AbortSignal.timeout(25000),
     );
     console.log("Lead-in reference resolution", decision);
-    assert.equal(passesIntegrity(decision!), true);
+    assert.equal(passesIntegrity("claim", decision!), true);
     const [differentFact] = await createJevClassifiers(apiKey).classifyIntegrity(
       source,
       [{ proposition: text, claim: "Mira approached the gate of North Depot." }],

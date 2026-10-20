@@ -1,3 +1,4 @@
+import ky, { HTTPError } from "ky";
 import { z } from "zod";
 import type { AtomTagger } from "../application/ports/atom-tagger.js";
 
@@ -17,9 +18,9 @@ const TAG_TYPES = {
     "A specific topic, cultural phenomenon, historical period, genre, theme, trend, or subject useful for identifying what the article or claim is about, such as 1990s nostalgia, Britpop, or 1990s music",
 };
 
-const schema = {
-  entities: Object.entries(TAG_TYPES).map(([name, description]) => ({ name, description })),
-};
+const schema = { entities: TAG_TYPES };
+
+const RETRYABLE = [425, 429, 502, 503];
 
 const Completion = z.object({
   choices: z.tuple([z.object({ message: z.object({ content: z.string() }) })]),
@@ -53,25 +54,46 @@ export const createFastinoTagger = (
   endpoint: FastinoEndpoint,
   transport: typeof fetch = fetch,
 ): AtomTagger => {
+  const client = ky.create({
+    fetch: transport,
+    timeout: endpoint.timeoutMilliseconds,
+    headers: { "X-API-Key": endpoint.apiKey },
+    retry: {
+      limit: 3,
+      methods: ["post"],
+      statusCodes: RETRYABLE,
+      afterStatusCodes: RETRYABLE,
+      maxRetryAfter: 60_000,
+    },
+  });
   const extract = async (title: string, claim: string, signal: AbortSignal) => {
-    const response = await transport(`${endpoint.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-API-Key": endpoint.apiKey },
-      body: JSON.stringify({
-        model: endpoint.model,
-        messages: [{ role: "user", content: `[Article: ${title}]\nClaim: ${claim}` }],
-        schema,
-        threshold: 0.5,
-        include_confidence: true,
-        include_spans: false,
-      }),
-      signal: AbortSignal.any([signal, AbortSignal.timeout(endpoint.timeoutMilliseconds)]),
-    });
-    if (!response.ok) {
-      throw new Error(`Fastino tagging failed (${response.status}): ${await response.text()}`);
+    let body: unknown;
+    try {
+      body = await client
+        .post(`${endpoint.baseUrl}/chat/completions`, {
+          json: {
+            model: endpoint.model,
+            messages: [{ role: "user", content: `[Article: ${title}]\nClaim: ${claim}` }],
+            schema,
+            threshold: 0.5,
+            include_confidence: true,
+            include_spans: false,
+          },
+          signal,
+        })
+        .json();
+    } catch (error) {
+      if (signal.aborted) {
+        throw signal.reason;
+      }
+      const detail =
+        error instanceof HTTPError
+          ? ` (${error.response.status}): ${JSON.stringify(error.data)}`
+          : "";
+      throw new Error(`Fastino tagging failed${detail}`, { cause: error });
     }
     try {
-      const [choice] = Completion.parse(await response.json()).choices;
+      const [choice] = Completion.parse(body).choices;
       const { entities } = Extraction.parse(JSON.parse(choice.message.content));
       return collapseTags(Object.values(entities).flat());
     } catch (error) {
@@ -81,6 +103,15 @@ export const createFastinoTagger = (
 
   return async (title, claims, signal) => {
     signal.throwIfAborted();
-    return await Promise.all(claims.map((claim) => extract(title, claim, signal)));
+    const failed = new AbortController();
+    const shared = AbortSignal.any([signal, failed.signal]);
+    return await Promise.all(
+      claims.map((claim) =>
+        extract(title, claim, shared).catch((error: unknown) => {
+          failed.abort(error);
+          throw error;
+        }),
+      ),
+    );
   };
 };

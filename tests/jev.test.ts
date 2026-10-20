@@ -153,10 +153,10 @@ test("integrity requests carry explicit targets and task-specific criteria, incl
     "The fox jumps and the dog sleeps.",
   );
   assert.match(splitChecks[0]!.instructions.question, /asserted component/u);
-  assert.equal(passesIntegrity(results[0]!), true);
+  assert.equal(passesIntegrity("claim", results[0]!), true);
   assert.equal(results[1]?.supported, true);
   assert.equal(results[1]?.meaning_preserved, false);
-  assert.equal(passesIntegrity(results[1]!), false);
+  assert.equal(passesIntegrity("claim", results[1]!), false);
 });
 
 test("framing batches indexed questions in order and handles empty input", async () => {
@@ -350,7 +350,7 @@ test("integrity carries lead-in and section context while standalone remains iso
     [{ proposition: text, claim: "Mira opened the North Depot gate in 2024." }],
     AbortSignal.timeout(5000),
   );
-  assert.equal(passesIntegrity(result!), true);
+  assert.equal(passesIntegrity("claim", result!), true);
   assert.equal(calls, 5);
 });
 
@@ -373,6 +373,6 @@ test("the classifier accepts only bounded source context and applies the domain 
       [{ proposition: "Mira opened the gate.", claim: "Mira opened the gate." }],
       AbortSignal.timeout(5000),
     );
-    assert.equal(passesIntegrity(decision!), probability === 0.6);
+    assert.equal(passesIntegrity("claim", decision!), probability === 0.6);
   }
 });
